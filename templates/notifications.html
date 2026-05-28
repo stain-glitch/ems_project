@@ -1,0 +1,42 @@
+{% extends "layout.html" %}
+{% block title %}Notifications{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3><i class="bi bi-bell"></i> Notifications</h3>
+    {% if notifications %}
+    <a href="{{ url_for('mark_all_notifications_read') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-check2-all"></i> Mark all as read
+    </a>
+    {% endif %}
+</div>
+
+<div class="card shadow-sm">
+    <div class="list-group list-group-flush">
+        {% for n in notifications %}
+        <div class="list-group-item {% if not n.is_read %}list-group-item-warning{% endif %} d-flex justify-content-between align-items-start">
+            <div>
+                <p class="mb-1">{{ n.message }}</p>
+                <small class="text-muted">{{ n.created_at.strftime('%d %b %Y %H:%M') }}</small>
+                {% if n.incident %}
+                <a href="{{ url_for('view_incident', incident_id=n.incident_id) }}" class="btn btn-sm btn-outline-primary ms-2">
+                    <i class="bi bi-eye"></i> View Incident
+                </a>
+                {% endif %}
+            </div>
+            {% if not n.is_read %}
+            <a href="{{ url_for('mark_notification_read', notification_id=n.id) }}"
+               class="btn btn-sm btn-outline-secondary ms-2" title="Mark as read">
+                <i class="bi bi-check"></i>
+            </a>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="list-group-item text-center text-muted py-5">
+            <i class="bi bi-bell-slash fs-2 d-block mb-2"></i>
+            No notifications yet.
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

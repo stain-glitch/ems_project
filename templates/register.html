@@ -1,0 +1,170 @@
+{% extends "layout.html" %}
+{% block title %}Register{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7">
+    <div class="card shadow-sm">
+      <div class="card-header bg-success text-white">
+        <h4 class="mb-0"><i class="bi bi-person-plus"></i> Create Account</h4>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('register') }}" enctype="multipart/form-data" id="registerForm">
+
+          <div class="mb-3">
+            <label class="form-label fw-bold">Account Type</label>
+            <div class="d-flex gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="role" id="roleCitizen"
+                       value="citizen" checked onchange="toggleAdminFields()">
+                <label class="form-check-label" for="roleCitizen">
+                  <i class="bi bi-person"></i> Community Member
+                </label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="role" id="roleAdmin"
+                       value="admin" onchange="toggleAdminFields()">
+                <label class="form-check-label" for="roleAdmin">
+                  <i class="bi bi-shield-check"></i> Administrator
+                  <span class="text-muted small">(requires approval)</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-bold">Username <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" name="username" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold">Email Address <span class="text-danger">*</span></label>
+              <input type="email" class="form-control" name="email" required>
+            </div>
+          </div>
+
+          <div class="row mb-4">
+            <div class="col-md-6">
+              <label class="form-label fw-bold">Password <span class="text-danger">*</span></label>
+              <input type="password" class="form-control" id="password" name="password" required minlength="6">
+              <div class="form-text">Minimum 6 characters.</div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold">Confirm Password <span class="text-danger">*</span></label>
+              <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+            </div>
+          </div>
+
+          <!-- Admin-only fields -->
+          <div id="admin-fields" style="display:none;">
+            <hr>
+            <div class="alert alert-warning py-2 mb-3">
+              <i class="bi bi-shield-lock-fill me-1"></i>
+              <strong>Admin Registration</strong> — your application will be reviewed by the system administrator before you can log in.
+              Upload a valid government-issued ID (National ID, Passport, or staff card) and select your district and department.
+            </div>
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label class="form-label fw-bold">District <span class="text-danger">*</span></label>
+                <select class="form-select" id="district" name="district">
+                  <option value="" disabled selected>— Select district —</option>
+                  {% for d in districts %}
+                  <option value="{{ d }}">{{ d }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-bold">Department <span class="text-danger">*</span></label>
+                <select class="form-select" id="department" name="department">
+                  <option value="" disabled selected>— Select department —</option>
+                  {% for dept in departments %}
+                  <option value="{{ dept }}">{{ dept }}</option>
+                  {% endfor %}
+                </select>
+                <div class="form-text">Incidents are routed to you based on this.</div>
+              </div>
+            </div>
+
+            <!-- ID Document Upload -->
+            <div class="mb-3">
+              <label class="form-label fw-bold">
+                Government-Issued ID <span class="text-danger">* (Required for admin)</span>
+              </label>
+              <div class="border rounded p-3 bg-light" id="idDropZone" onclick="document.getElementById('id_document').click()" style="cursor:pointer; border-style:dashed !important;">
+                <div class="text-center">
+                  <i class="bi bi-card-heading fs-2 text-secondary"></i>
+                  <p class="mb-1 mt-1 fw-bold small">Click to upload your ID document</p>
+                  <p class="text-muted small mb-0">National ID, Passport, Staff Card — PNG, JPG, PDF</p>
+                </div>
+              </div>
+              <input type="file" class="d-none" id="id_document" name="id_document"
+                     accept="image/*,.pdf">
+              <div id="id-preview" class="mt-2"></div>
+              <div class="form-text text-danger">
+                <i class="bi bi-lock"></i> Your ID is stored securely and only visible to the system administrator.
+              </div>
+            </div>
+
+            <!-- Routing info -->
+            <div class="mb-3">
+              <p class="small text-muted mb-1"><strong>Incident routing by category:</strong></p>
+              <div class="d-flex flex-wrap gap-1">
+                <span class="badge bg-secondary">Illegal Dumping → Sanitation</span>
+                <span class="badge bg-success">Deforestation / Charcoal → Forestry</span>
+                <span class="badge bg-primary">Pollution → Environmental Protection</span>
+                <span class="badge bg-warning text-dark">Poaching → Wildlife & National Parks</span>
+                <span class="badge bg-dark">Mining → Mines & Minerals</span>
+              </div>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-success w-100 mt-2">
+            <i class="bi bi-person-check"></i> <span id="submitLabel">Create Account</span>
+          </button>
+        </form>
+        <hr>
+        <div class="text-center">
+          <p class="mb-0">Already have an account? <a href="{{ url_for('login') }}">Login here</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleAdminFields() {
+  const isAdmin = document.querySelector('input[name="role"]:checked').value === 'admin';
+  document.getElementById('admin-fields').style.display = isAdmin ? 'block' : 'none';
+  document.getElementById('district').required   = isAdmin;
+  document.getElementById('department').required = isAdmin;
+  document.getElementById('id_document').required = isAdmin;
+  document.getElementById('submitLabel').textContent = isAdmin ? 'Submit Admin Application' : 'Create Account';
+}
+
+document.getElementById('id_document').addEventListener('change', function() {
+  const file = this.files[0];
+  if (!file) return;
+  const preview = document.getElementById('id-preview');
+  const isPdf = file.name.toLowerCase().endsWith('.pdf');
+  if (isPdf) {
+    preview.innerHTML = `<p class="text-success small"><i class="bi bi-file-earmark-pdf"></i> ${file.name} ready to upload</p>`;
+  } else {
+    const reader = new FileReader();
+    reader.onload = e => {
+      preview.innerHTML = `<img src="${e.target.result}" style="max-height:120px; border-radius:4px;" class="border shadow-sm">
+        <p class="text-success small mt-1"><i class="bi bi-check-circle"></i> ${file.name}</p>`;
+    };
+    reader.readAsDataURL(file);
+  }
+  document.getElementById('idDropZone').style.borderColor = '#28a745';
+});
+
+document.getElementById('registerForm').addEventListener('submit', function(e) {
+  if (document.getElementById('password').value !== document.getElementById('confirm_password').value) {
+    e.preventDefault();
+    alert('Passwords do not match.');
+  }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,428 @@
+{% extends "layout.html" %}
+{% block title %}Report Environmental Incident{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+<style>
+  #map { height: 380px; width: 100%; border-radius: 8px; border: 1px solid #dee2e6; cursor: crosshair; }
+  .location-controls { background: #f8f9fa; padding: 14px; border-radius: 8px; margin-bottom: 4px; }
+  .preview-image { max-width: 200px; max-height: 150px; border-radius: 6px; }
+  .category-info-box { display:none; margin-top:10px; padding:12px; border-radius:6px; border-left:4px solid #28a745; background:#f0faf2; }
+  .dept-tag { font-size:.8em; padding:2px 8px; border-radius:12px; background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; }
+  .image-drop-zone { border:2px dashed #28a745; border-radius:8px; padding:28px; text-align:center; cursor:pointer; transition:background .2s; }
+  .image-drop-zone:hover, .image-drop-zone.dragover { background:#f0faf2; }
+  .image-drop-zone i { font-size:2rem; color:#28a745; }
+  .district-pill { display:inline-block; background:#e3f2fd; border:1px solid #90caf9; color:#1565c0; border-radius:20px; padding:4px 14px; font-size:.85rem; }
+  #search-results { position:absolute; z-index:9999; width:100%; background:#fff; border:1px solid #dee2e6; border-radius:0 0 6px 6px; box-shadow:0 4px 12px rgba(0,0,0,.1); max-height:220px; overflow-y:auto; }
+  #search-results .result-item { padding:10px 14px; cursor:pointer; border-bottom:1px solid #f0f0f0; font-size:.9rem; }
+  #search-results .result-item:hover { background:#f0faf2; }
+  #search-results .result-item:last-child { border-bottom:none; }
+  .search-wrapper { position:relative; }
+  .pin-instruction { background:#fff3cd; border:1px solid #ffc107; border-radius:6px; padding:8px 12px; font-size:.85rem; color:#856404; }
+  .coord-display { font-family:monospace; font-size:.82rem; color:#555; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-9">
+    <div class="card shadow-sm">
+      <div class="card-header bg-success text-white">
+        <h4 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Report Environmental Incident</h4>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('report_incident') }}" enctype="multipart/form-data" id="incidentForm">
+
+          <!-- Category -->
+          <div class="mb-3">
+            <label for="category" class="form-label fw-bold">
+              Incident Category <span class="text-danger">*</span>
+            </label>
+            <select class="form-select form-select-lg" id="category" name="category" required onchange="onCategoryChange()">
+              <option value="" disabled selected>— Select the type of incident you observed —</option>
+              {% for value, label in categories %}
+              <option value="{{ value }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+            <div class="category-info-box" id="category-info-box">
+              <strong>Will be routed to:</strong>
+              <span id="dept-name" class="dept-tag ms-2"></span>
+              <span id="emergency-warning" class="badge bg-danger ms-2" style="display:none;">🚨 Emergency</span>
+              <p id="category-hint" class="mb-0 mt-1 text-muted small"></p>
+            </div>
+          </div>
+
+          <!-- Description -->
+          <div class="mb-3">
+            <label for="description" class="form-label fw-bold">
+              Description <span class="text-danger">*</span>
+            </label>
+            <textarea class="form-control" id="description" name="description" rows="4" required
+              placeholder="Describe what you observed — scale, timing, who was involved. English or Chichewa."></textarea>
+          </div>
+
+          <!-- Location -->
+          <div class="mb-3">
+            <label class="form-label fw-bold">
+              Incident Location <span class="text-danger">*</span>
+            </label>
+            <div class="location-controls">
+
+              <!-- Step 1: Search -->
+              <p class="mb-2 small fw-semibold">
+                <span class="badge bg-success me-1">1</span>
+                Search for the nearest town, village, or landmark:
+              </p>
+              <div class="search-wrapper mb-3">
+                <div class="input-group">
+                  <span class="input-group-text bg-white"><i class="bi bi-search text-success"></i></span>
+                  <input type="text" class="form-control" id="location-search"
+                         placeholder="e.g. Zomba, Mulanje, Liwonde Market…"
+                         autocomplete="off" oninput="onSearchInput()">
+                  <button type="button" class="btn btn-outline-secondary" onclick="clearSearch()">
+                    <i class="bi bi-x"></i>
+                  </button>
+                </div>
+                <div id="search-results" style="display:none;"></div>
+              </div>
+
+              <!-- Step 2: Pin on map -->
+              <p class="mb-2 small fw-semibold">
+                <span class="badge bg-success me-1">2</span>
+                Click the map to drop a pin at the exact spot:
+              </p>
+              <div class="pin-instruction mb-2" id="pin-instruction">
+                <i class="bi bi-hand-index-thumb"></i>
+                Click anywhere on the map to place the incident pin. You can drag it afterwards to refine.
+              </div>
+
+              <div id="map"></div>
+
+              <!-- Coordinates + district -->
+              <div class="mt-2">
+                <input type="text" class="form-control form-control-sm mb-2" id="location_name"
+                       name="location_name" placeholder="Location description (optional)">
+                <div class="row g-2">
+                  <div class="col-6">
+                    <input type="number" class="form-control form-control-sm coord-display" id="latitude"
+                           name="latitude" step="0.000001" placeholder="Latitude" required readonly>
+                  </div>
+                  <div class="col-6">
+                    <input type="number" class="form-control form-control-sm coord-display" id="longitude"
+                           name="longitude" step="0.000001" placeholder="Longitude" required readonly>
+                  </div>
+                </div>
+                <div id="district-display" class="mt-2" style="display:none;">
+                  <span class="text-muted small">
+                    <i class="bi bi-geo-alt-fill text-primary"></i> Detected district:
+                  </span>
+                  <span id="district-pill" class="district-pill"></span>
+                  <span id="district-loading" class="text-muted small ms-2" style="display:none;">
+                    <span class="spinner-border spinner-border-sm"></span> Detecting…
+                  </span>
+                </div>
+              </div>
+
+              <!-- GPS — demoted, honest about desktop limitations -->
+              <hr class="my-2">
+              <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="gpsBtn"
+                          onclick="getCurrentLocation()">
+                    <i class="bi bi-crosshair"></i> Use Device GPS
+                  </button>
+                  <span class="text-muted small ms-1">
+                    <i class="bi bi-info-circle"></i>
+                    Accurate on phones only. Unreliable on desktops — use search instead.
+                  </span>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="resetMap()">
+                  <i class="bi bi-arrow-counterclockwise"></i> Reset
+                </button>
+              </div>
+              <div id="gps-status" class="mt-1" style="display:none;"></div>
+
+            </div>
+          </div>
+
+          <!-- Photo evidence -->
+          <div class="mb-4">
+            <label class="form-label fw-bold">
+              Photo Evidence <span class="text-danger">* (Required)</span>
+            </label>
+            <div class="image-drop-zone" id="dropZone" onclick="document.getElementById('image').click()">
+              <i class="bi bi-camera"></i>
+              <p class="mb-1 mt-2 fw-bold">Click to upload or drag & drop</p>
+              <p class="text-muted small mb-0">PNG, JPG, JPEG, GIF — max 5 MB</p>
+            </div>
+            <input type="file" class="d-none" id="image" name="image" accept="image/*" capture="environment" required>
+            <div id="image-preview" class="mt-2 text-center"></div>
+          </div>
+
+          <div class="d-flex justify-content-between">
+            <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+              <i class="bi bi-arrow-left"></i> Cancel
+            </a>
+            <button type="submit" class="btn btn-success btn-lg">
+              <i class="bi bi-send"></i> Submit Report
+            </button>
+          </div>
+
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script>
+let map, marker;
+
+// ── Category routing info ────────────────────────────────────────────
+const deptMap = {
+  dumping:       { dept:'Sanitation',                emergency:false, hint:'Illegal waste or garbage dumping.' },
+  pollution:     { dept:'Environmental Protection',  emergency:false, hint:'Air, water, or soil contamination.' },
+  charcoal:      { dept:'Forestry',                  emergency:false, hint:'Illegal charcoal production.' },
+  deforestation: { dept:'Forestry',                  emergency:false, hint:'Illegal tree cutting or forest clearing.' },
+  poaching:      { dept:'Wildlife & National Parks', emergency:true,  hint:'🚨 Wildlife crimes — treated as emergency.' },
+  mining:        { dept:'Mines & Minerals',          emergency:false, hint:'Illegal or unlicensed excavation.' },
+  wildfire:      { dept:'Forestry',                  emergency:true,  hint:'🚨 Wildfires — emergency response triggered.' },
+  other:         { dept:'General Administration',    emergency:false, hint:'Other environmental incidents.' },
+};
+
+function onCategoryChange() {
+  const cat  = document.getElementById('category').value;
+  const info = deptMap[cat];
+  const box  = document.getElementById('category-info-box');
+  if (info) {
+    document.getElementById('dept-name').textContent = info.dept;
+    document.getElementById('category-hint').textContent = info.hint;
+    const w = document.getElementById('emergency-warning');
+    w.style.display = info.emergency ? 'inline' : 'none';
+    box.style.display     = 'block';
+    box.style.borderColor = info.emergency ? '#dc3545' : '#28a745';
+    box.style.background  = info.emergency ? '#fff5f5' : '#f0faf2';
+  } else {
+    box.style.display = 'none';
+  }
+}
+
+// ── District reverse-geocode ─────────────────────────────────────────
+let geocodeTimer = null;
+function lookupDistrict(lat, lng) {
+  clearTimeout(geocodeTimer);
+  document.getElementById('district-display').style.display = 'block';
+  document.getElementById('district-loading').style.display = 'inline';
+  document.getElementById('district-pill').textContent = '';
+  geocodeTimer = setTimeout(() => {
+    fetch(`/api/reverse-geocode?lat=${lat}&lng=${lng}`)
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('district-loading').style.display = 'none';
+        const pill = document.getElementById('district-pill');
+        pill.style.cssText = '';
+        if (data.district) {
+          pill.textContent = data.district;
+        } else {
+          pill.textContent = 'Could not detect — admin will resolve';
+          pill.style.background   = '#fff3e0';
+          pill.style.borderColor  = '#ffcc80';
+          pill.style.color        = '#e65100';
+        }
+        pill.style.display = 'inline-block';
+      })
+      .catch(() => {
+        document.getElementById('district-loading').style.display = 'none';
+        document.getElementById('district-pill').textContent = 'Detection unavailable';
+      });
+  }, 600);
+}
+
+// ── Place / move the pin ─────────────────────────────────────────────
+function setLocation(lat, lng, zoom) {
+  document.getElementById('latitude').value  = lat.toFixed(6);
+  document.getElementById('longitude').value = lng.toFixed(6);
+  if (marker) map.removeLayer(marker);
+  marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+  marker.bindPopup('<small>Drag to refine exact location</small>').openPopup();
+  marker.on('dragend', function() {
+    const p = marker.getLatLng();
+    document.getElementById('latitude').value  = p.lat.toFixed(6);
+    document.getElementById('longitude').value = p.lng.toFixed(6);
+    lookupDistrict(p.lat, p.lng);
+  });
+  map.setView([lat, lng], zoom || 15);
+  lookupDistrict(lat, lng);
+  document.getElementById('pin-instruction').style.display = 'none';
+}
+
+// ── Location search (Nominatim) ──────────────────────────────────────
+let searchTimer = null;
+function onSearchInput() {
+  const q = document.getElementById('location-search').value.trim();
+  const resultsEl = document.getElementById('search-results');
+  clearTimeout(searchTimer);
+  if (q.length < 2) { resultsEl.style.display = 'none'; return; }
+
+  searchTimer = setTimeout(() => {
+    const params = new URLSearchParams({
+      q: q + ', Malawi',
+      format: 'json',
+      limit: 6,
+      countrycodes: 'mw',
+      addressdetails: 1,
+    });
+    fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
+      headers: { 'Accept-Language': 'en' }
+    })
+    .then(r => r.json())
+    .then(results => {
+      if (!results.length) {
+        resultsEl.innerHTML = '<div class="result-item text-muted">No results found. Try a different name or click the map directly.</div>';
+        resultsEl.style.display = 'block';
+        return;
+      }
+      resultsEl.innerHTML = results.map(r => {
+        const name = r.display_name.replace(/, Malawi.*/, '').trim();
+        return `<div class="result-item"
+                     onclick="selectResult(${parseFloat(r.lat)}, ${parseFloat(r.lon)}, '${name.replace(/'/g, "\\'")}')">
+                  <i class="bi bi-geo-alt-fill text-success me-1"></i>${name}
+                </div>`;
+      }).join('');
+      resultsEl.style.display = 'block';
+    })
+    .catch(() => {
+      resultsEl.innerHTML = '<div class="result-item text-danger">Search unavailable — click the map directly.</div>';
+      resultsEl.style.display = 'block';
+    });
+  }, 400);
+}
+
+function selectResult(lat, lng, name) {
+  document.getElementById('search-results').style.display = 'none';
+  document.getElementById('location-search').value = name;
+  document.getElementById('location_name').value   = name;
+  setLocation(lat, lng, 14);
+}
+
+function clearSearch() {
+  document.getElementById('location-search').value = '';
+  document.getElementById('search-results').style.display = 'none';
+}
+
+// Close dropdown when clicking elsewhere
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrapper'))
+    document.getElementById('search-results').style.display = 'none';
+});
+
+// ── GPS (phone only, demoted) ────────────────────────────────────────
+function getCurrentLocation() {
+  if (!navigator.geolocation) { alert('Geolocation not supported by your browser.'); return; }
+
+  const btn       = document.getElementById('gpsBtn');
+  const statusBox = document.getElementById('gps-status');
+
+  btn.disabled  = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Locating…';
+  statusBox.style.display = 'block';
+  statusBox.className     = 'mt-1 small text-warning';
+  statusBox.innerHTML     = '<i class="bi bi-broadcast me-1"></i> Requesting location from device…';
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      btn.disabled  = false;
+      btn.innerHTML = '<i class="bi bi-crosshair"></i> Use Device GPS';
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const acc = Math.round(pos.coords.accuracy);
+      setLocation(lat, lng, 15);
+      document.getElementById('location_name').value = 'Current Location';
+      if (acc <= 100) {
+        statusBox.className = 'mt-1 small text-success';
+        statusBox.innerHTML = `<i class="bi bi-check-circle me-1"></i> GPS locked — accuracy ±${acc} m`;
+      } else {
+        statusBox.className = 'mt-1 small text-warning';
+        statusBox.innerHTML =
+          `<i class="bi bi-exclamation-circle me-1"></i> Low accuracy ±${acc} m — ` +
+          `this device likely has no GPS chip. Use the search box above for a reliable location.`;
+      }
+    },
+    (err) => {
+      btn.disabled  = false;
+      btn.innerHTML = '<i class="bi bi-crosshair"></i> Use Device GPS';
+      const msgs = {
+        1: 'Location access denied — enable it in browser settings.',
+        2: 'Position unavailable on this device.',
+        3: 'Request timed out.',
+      };
+      statusBox.className = 'mt-1 small text-danger';
+      statusBox.innerHTML =
+        `<i class="bi bi-exclamation-triangle me-1"></i> ${msgs[err.code] || 'Unknown error.'} ` +
+        `Use the search box above instead.`;
+    },
+    { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 }
+  );
+}
+
+// ── Reset ────────────────────────────────────────────────────────────
+function resetMap() {
+  map.setView([-13.9626, 33.7741], 7);
+  if (marker) { map.removeLayer(marker); marker = null; }
+  ['latitude', 'longitude', 'location_name'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('location-search').value = '';
+  document.getElementById('search-results').style.display  = 'none';
+  document.getElementById('district-display').style.display = 'none';
+  document.getElementById('gps-status').style.display       = 'none';
+  document.getElementById('pin-instruction').style.display  = 'block';
+}
+
+// ── Image upload ─────────────────────────────────────────────────────
+const dropZone   = document.getElementById('dropZone');
+const imageInput = document.getElementById('image');
+imageInput.addEventListener('change', () => handleFile(imageInput.files[0]));
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) { imageInput.files = e.dataTransfer.files; handleFile(file); }
+});
+function handleFile(file) {
+  if (!file) return;
+  if (file.size > 5*1024*1024) { alert('Max size 5 MB.'); imageInput.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('image-preview').innerHTML =
+      `<img src="${e.target.result}" class="preview-image shadow-sm">
+       <p class="text-success small mt-1"><i class="bi bi-check-circle"></i> ${file.name}</p>`;
+    dropZone.style.borderColor = '#28a745';
+    dropZone.style.background  = '#f0faf2';
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Form validation ──────────────────────────────────────────────────
+document.getElementById('incidentForm').addEventListener('submit', e => {
+  if (!document.getElementById('latitude').value) {
+    e.preventDefault();
+    alert('Please set the incident location — search for a place or click the map.');
+    return;
+  }
+  if (!imageInput.files || !imageInput.files[0]) {
+    e.preventDefault();
+    alert('A photo of the incident is required.');
+    imageInput.focus();
+  }
+});
+
+// ── Init ─────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  map = L.map('map').setView([-13.9626, 33.7741], 7);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
+  map.on('click', e => setLocation(e.latlng.lat, e.latlng.lng));
+});
+</script>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "layout.html" %}
+
+{% block title %}Incident #{{ incident.id }} - {{ incident.title }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+<style>
+    .incident-map { height: 400px; width: 100%; border-radius: 8px; margin: 20px 0; border: 1px solid #dee2e6; }
+    .incident-image { max-width: 100%; max-height: 500px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    .detail-card { border-left: 4px solid #28a745; background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 15px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row"><div class="col-md-12"><nav aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="{{ url_for('index') }}">Home</a></li><li class="breadcrumb-item"><a href="{{ url_for('map_view') }}">Incident Map</a></li><li class="breadcrumb-item active">Incident #{{ incident.id }}</li></ol></nav></div></div>
+<div class="row">
+    <div class="col-md-8">
+        <h2>{{ incident.title }}</h2>
+        <p class="text-muted">Reported by {{ incident.reporter.username if incident.reporter else 'Anonymous' }} on {{ incident.created_at.strftime('%B %d, %Y at %H:%M') }}</p>
+        <div class="detail-card"><h5>Description</h5><p>{{ incident.description }}</p></div>
+        <div class="row"><div class="col-md-6"><h5>Category</h5><p><span class="badge {% if incident.category == 'deforestation' %}bg-success{% elif incident.category == 'pollution' %}bg-warning{% elif incident.category == 'poaching' %}bg-danger{% elif incident.category == 'mining' %}bg-dark{% elif incident.category == 'charcoal' %}bg-secondary{% elif incident.category == 'dumping' %}bg-info{% else %}bg-secondary{% endif %} fs-6">{{ incident.category|title if incident.category else 'Uncategorized' }}</span></p></div><div class="col-md-6"><h5>Status</h5><p><span class="badge {% if incident.status == 'pending' %}bg-warning{% elif incident.status == 'verified' %}bg-info{% elif incident.status == 'resolved' %}bg-success{% elif incident.status == 'rejected' %}bg-danger{% else %}bg-secondary{% endif %} fs-6">{{ incident.status|title }}</span></p></div></div>
+        {% if incident.location_name %}<h5>Location Name</h5><p>{{ incident.location_name }}</p>{% endif %}
+        {% if incident.latitude and incident.longitude %}<h5>Location Map</h5><div id="incidentMap" class="incident-map"></div><p class="text-muted small">Coordinates: {{ incident.latitude }}, {{ incident.longitude }}</p>{% endif %}
+        {% if incident.image_path %}<h5>Image Evidence</h5><img src="{{ url_for('static', filename=incident.image_path) }}" alt="Incident Image" class="incident-image">{% endif %}
+    </div>
+    <div class="col-md-4">
+        <div class="card"><div class="card-header bg-success text-white"><h5 class="mb-0">Incident Summary</h5></div><div class="card-body"><ul class="list-unstyled"><li><strong>ID:</strong> #{{ incident.id }}</li><li><strong>Reporter:</strong> {{ incident.reporter.username if incident.reporter else 'Anonymous' }}</li><li><strong>Email:</strong> {{ incident.reporter.email if incident.reporter else 'N/A' }}</li><li><strong>Reported:</strong> {{ incident.created_at.strftime('%Y-%m-%d') }}</li><li><strong>Last Updated:</strong> {{ incident.updated_at.strftime('%Y-%m-%d %H:%M') if incident.updated_at else 'Never' }}</li></ul>
+        {% if current_user.is_authenticated and current_user.role == 'admin' %}<hr><h6>Admin Actions</h6><div class="d-grid gap-2"><button class="btn btn-sm btn-success" onclick="updateStatus({{ incident.id }}, 'verified')">Mark Verified</button><button class="btn btn-sm btn-primary" onclick="updateStatus({{ incident.id }}, 'resolved')">Mark Resolved</button><button class="btn btn-sm btn-warning" onclick="updateStatus({{ incident.id }}, 'pending')">Mark Pending</button><button class="btn btn-sm btn-danger" onclick="deleteIncident({{ incident.id }}, '{{ incident.title }}')">Delete</button></div>{% endif %}</div></div>
+    </div>
+</div>
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script>
+    {% if incident.latitude and incident.longitude %}
+    const map = L.map('incidentMap').setView([{{ incident.latitude }}, {{ incident.longitude }}], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(map);
+    L.marker([{{ incident.latitude }}, {{ incident.longitude }}]).addTo(map).bindPopup('<strong>Incident #{{ incident.id }}</strong><br>{{ incident.title }}').openPopup();
+    {% endif %}
+
+    {% if current_user.is_authenticated and current_user.role == 'admin' %}
+    function updateStatus(id, status) {
+        if (!confirm(`Change status to "${status}"?`)) return;
+        fetch(`/api/incident/${id}/status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: status })
+        }).then(r => r.json()).then(d => { if (d.success) location.reload(); else alert('Error: ' + d.error); });
+    }
+    function deleteIncident(id, title) {
+        if (!confirm(`Delete incident "${title}"? This cannot be undone.`)) return;
+        fetch(`/api/incident/${id}`, { method: 'DELETE' })
+            .then(r => r.json()).then(d => { if (d.success) window.location.href = "{{ url_for('view_incidents') }}"; else alert('Error: ' + d.error); });
+    }
+    {% endif %}
+</script>
+{% endblock %}

@@ -1,0 +1,389 @@
+{% extends "layout.html" %}
+
+{% block title %}System Analytics & Reports{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/apexcharts@3.35.0/dist/apexcharts.css">
+<style>
+    .stat-card { transition: transform 0.3s, box-shadow 0.3s; border: none; border-radius: 10px; overflow: hidden; }
+    .stat-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+    .stat-icon { font-size: 2.5rem; opacity: 0.8; }
+    .chart-container { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; border: 1px solid #e9ecef; }
+    .export-btn-group { position: absolute; top: 20px; right: 20px; z-index: 10; }
+    .filter-card { background: #f8f9fa; border-left: 4px solid #28a745; }
+    .date-range-picker { background: white; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; }
+    .trend-indicator { font-size: 0.9rem; padding: 2px 8px; border-radius: 12px; }
+    .trend-up { background-color: rgba(40, 167, 69, 0.1); color: #28a745; }
+    .trend-down { background-color: rgba(220, 53, 69, 0.1); color: #dc3545; }
+    .trend-neutral { background-color: rgba(108, 117, 125, 0.1); color: #6c757d; }
+    .data-table { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); border: 1px solid #e9ecef; }
+    .dashboard-header { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 25px; border-radius: 10px; margin-bottom: 30px; }
+    .time-period-btn.active { background-color: #28a745; color: white; border-color: #28a745; }
+    .metric-value { font-size: 2.2rem; font-weight: bold; margin-bottom: 5px; }
+    .metric-label { font-size: 0.9rem; color: #6c757d; text-transform: uppercase; letter-spacing: 1px; }
+    .chart-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 15px; color: #343a40; border-bottom: 2px solid #28a745; padding-bottom: 8px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+    <div class="row align-items-center">
+        <div class="col-md-8"><h1><i class="bi bi-graph-up"></i> System Analytics & Reports</h1><p class="mb-0">Comprehensive environmental incident analysis and reporting dashboard</p></div>
+        <div class="col-md-4 text-end">
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-outline-light" id="refreshAnalytics"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+                <button type="button" class="btn btn-light" data-bs-toggle="modal" data-bs-target="#exportModal"><i class="bi bi-download"></i> Export Reports</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card filter-card">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-6"><h5 class="mb-0"><i class="bi bi-calendar-range"></i> Select Time Period</h5></div>
+                    <div class="col-md-6">
+                        <div class="btn-group w-100" role="group">
+                            <button type="button" class="btn btn-outline-success time-period-btn active" data-period="today">Today</button>
+                            <button type="button" class="btn btn-outline-success time-period-btn" data-period="week">This Week</button>
+                            <button type="button" class="btn btn-outline-success time-period-btn" data-period="month">This Month</button>
+                            <button type="button" class="btn btn-outline-success time-period-btn" data-period="quarter">Last 3 Months</button>
+                            <button type="button" class="btn btn-outline-success time-period-btn" data-period="year">This Year</button>
+                            <button type="button" class="btn btn-outline-success time-period-btn" data-period="all">All Time</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-12">
+                        <div class="date-range-picker">
+                            <div class="row g-2">
+                                <div class="col-md-3"><label class="form-label">Start Date</label><input type="date" class="form-control" id="startDate" value="{{ default_start_date }}"></div>
+                                <div class="col-md-3"><label class="form-label">End Date</label><input type="date" class="form-control" id="endDate" value="{{ default_end_date }}"></div>
+                                <div class="col-md-3"><label class="form-label">Category</label><select class="form-select" id="categoryFilter"><option value="all">All Categories</option>{% for category in categories %}<option value="{{ category }}">{{ category|title }}</option>{% endfor %}</select></div>
+                                <div class="col-md-3"><label class="form-label">District</label><select class="form-select" id="districtFilter"><option value="all">All Districts</option>{% for district in districts %}<option value="{{ district }}">{{ district }}</option>{% endfor %}</select></div>
+                            </div>
+                            <div class="row mt-2">
+                                <div class="col-md-12 text-end">
+                                    <button class="btn btn-success" id="applyFilters"><i class="bi bi-funnel"></i> Apply Filters</button>
+                                    <button class="btn btn-outline-secondary" id="resetFilters"><i class="bi bi-x-circle"></i> Reset</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Key Metrics -->
+<div class="row mb-4">
+    <div class="col-md-3"><div class="card stat-card bg-primary text-white"><div class="card-body"><div class="d-flex justify-content-between align-items-start"><div><div class="metric-value" id="totalIncidents">0</div><div class="metric-label">Total Incidents</div><div class="mt-2"><span class="trend-indicator trend-up" id="incidentTrend"><i class="bi bi-arrow-up-right"></i> 0%</span></div></div><div class="stat-icon"><i class="bi bi-exclamation-triangle"></i></div></div></div></div></div>
+    <div class="col-md-3"><div class="card stat-card bg-success text-white"><div class="card-body"><div class="d-flex justify-content-between align-items-start"><div><div class="metric-value" id="resolvedIncidents">0</div><div class="metric-label">Resolved</div><div class="mt-2"><span class="trend-indicator trend-up" id="resolvedTrend"><i class="bi bi-arrow-up-right"></i> 0%</span></div></div><div class="stat-icon"><i class="bi bi-check-circle"></i></div></div></div></div></div>
+    <div class="col-md-3"><div class="card stat-card bg-warning text-white"><div class="card-body"><div class="d-flex justify-content-between align-items-start"><div><div class="metric-value" id="avgResponseTime">0h</div><div class="metric-label">Avg Response Time</div><div class="mt-2"><span class="trend-indicator trend-down" id="responseTrend"><i class="bi bi-arrow-down-right"></i> 0%</span></div></div><div class="stat-icon"><i class="bi bi-clock-history"></i></div></div></div></div></div>
+    <div class="col-md-3"><div class="card stat-card bg-info text-white"><div class="card-body"><div class="d-flex justify-content-between align-items-start"><div><div class="metric-value" id="activeUsers">0</div><div class="metric-label">Active Reporters</div><div class="mt-2"><span class="trend-indicator trend-up" id="usersTrend"><i class="bi bi-arrow-up-right"></i> 0%</span></div></div><div class="stat-icon"><i class="bi bi-people"></i></div></div></div></div></div>
+</div>
+
+<!-- Charts Row 1 -->
+<div class="row mb-4">
+    <div class="col-md-6"><div class="chart-container"><div class="chart-title"><i class="bi bi-pie-chart"></i> Incident Distribution by Category</div><div id="categoryChart" style="height: 300px;"></div><div class="text-end mt-2"><button class="btn btn-sm btn-outline-success" onclick="exportChart('categoryChart', 'category_distribution.png')"><i class="bi bi-download"></i> Export Chart</button></div></div></div>
+    <div class="col-md-6"><div class="chart-container"><div class="chart-title"><i class="bi bi-bar-chart"></i> Monthly Incident Trends</div><div id="monthlyTrendChart" style="height: 300px;"></div><div class="text-end mt-2"><button class="btn btn-sm btn-outline-success" onclick="exportChart('monthlyTrendChart', 'monthly_trends.png')"><i class="bi bi-download"></i> Export Chart</button></div></div></div>
+</div>
+
+<!-- Charts Row 2 -->
+<div class="row mb-4">
+    <div class="col-md-6"><div class="chart-container"><div class="chart-title"><i class="bi bi-map"></i> District-wise Incident Distribution</div><div id="districtChart" style="height: 300px;"></div><div class="text-end mt-2"><button class="btn btn-sm btn-outline-success" onclick="exportChart('districtChart', 'district_distribution.png')"><i class="bi bi-download"></i> Export Chart</button></div></div></div>
+    <div class="col-md-6"><div class="chart-container"><div class="chart-title"><i class="bi bi-speedometer2"></i> Response Time Analysis</div><div id="responseTimeChart" style="height: 300px;"></div><div class="text-end mt-2"><button class="btn btn-sm btn-outline-success" onclick="exportChart('responseTimeChart', 'response_time.png')"><i class="bi bi-download"></i> Export Chart</button></div></div></div>
+</div>
+
+<!-- Detailed Data Table -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="data-table">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5><i class="bi bi-table"></i> Detailed Incident Data</h5>
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-outline-success" onclick="exportTableToCSV()"><i class="bi bi-file-earmark-spreadsheet"></i> Export CSV</button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="exportTableToExcel()"><i class="bi bi-file-excel"></i> Export Excel</button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="exportTableToPDF()"><i class="bi bi-file-pdf"></i> Export PDF</button>
+                </div>
+            </div>
+            <table class="table table-hover" id="analyticsTable">
+                <thead><tr><th>ID</th><th>Title</th><th>Category</th><th>Status</th><th>District</th><th>Reporter</th><th>Date</th><th>Response Time</th><th>Actions</th></tr></thead>
+                <tbody id="analyticsTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Reports -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header bg-success text-white"><h5 class="mb-0"><i class="bi bi-file-text"></i> Summary Reports</h5></div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4"><div class="card mb-3"><div class="card-body"><h6>Top Categories Report</h6><p class="text-muted small">Most reported environmental issues</p><button class="btn btn-sm btn-outline-success w-100" onclick="generateTopCategoriesReport()"><i class="bi bi-download"></i> Generate Report</button></div></div></div>
+                    <div class="col-md-4"><div class="card mb-3"><div class="card-body"><h6>District Performance</h6><p class="text-muted small">Response effectiveness by district</p><button class="btn btn-sm btn-outline-success w-100" onclick="generateDistrictReport()"><i class="bi bi-download"></i> Generate Report</button></div></div></div>
+                    <div class="col-md-4"><div class="card mb-3"><div class="card-body"><h6>Monthly Analytics</h6><p class="text-muted small">Comprehensive monthly analysis</p><button class="btn btn-sm btn-outline-success w-100" onclick="generateMonthlyReport()"><i class="bi bi-download"></i> Generate Report</button></div></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Export Modal -->
+<div class="modal fade" id="exportModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white"><h5 class="modal-title"><i class="bi bi-download"></i> Export Reports</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6"><div class="card mb-3"><div class="card-body text-center"><i class="bi bi-file-earmark-pdf display-4 text-danger mb-3"></i><h5>PDF Reports</h5><p class="text-muted">Generate comprehensive PDF reports</p><button class="btn btn-danger w-100" onclick="exportFullReport('pdf')"><i class="bi bi-file-pdf"></i> Export as PDF</button></div></div></div>
+                    <div class="col-md-6"><div class="card mb-3"><div class="card-body text-center"><i class="bi bi-file-earmark-excel display-4 text-success mb-3"></i><h5>Excel Reports</h5><p class="text-muted">Export data for further analysis</p><button class="btn btn-success w-100" onclick="exportFullReport('excel')"><i class="bi bi-file-excel"></i> Export as Excel</button></div></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="card">
+                            <div class="card-header"><h6 class="mb-0">Custom Report Options</h6></div>
+                            <div class="card-body">
+                                <div class="mb-3"><label class="form-label">Report Type</label><select class="form-select" id="reportType"><option value="summary">Executive Summary</option><option value="detailed">Detailed Analysis</option><option value="performance">Performance Metrics</option><option value="trends">Trend Analysis</option></select></div>
+                                <div class="mb-3"><label class="form-label">Date Range</label><div class="row g-2"><div class="col-md-6"><input type="date" class="form-control" id="reportStartDate"></div><div class="col-md-6"><input type="date" class="form-control" id="reportEndDate"></div></div></div>
+                                <div class="mb-3"><label class="form-label">Include Charts</label><div class="form-check"><input class="form-check-input" type="checkbox" id="includeCharts" checked><label class="form-check-label" for="includeCharts">Include visual charts in report</label></div></div>
+                                <button class="btn btn-success w-100" onclick="generateCustomReport()"><i class="bi bi-gear"></i> Generate Custom Report</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.4/js/dataTables.bootstrap5.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/apexcharts@3.35.0/dist/apexcharts.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+<script>
+let charts = {}, analyticsData = {};
+let currentFilters = {
+    startDate: '{{ default_start_date }}',
+    endDate: '{{ default_end_date }}',
+    category: 'all',
+    district: 'all',
+    period: 'today'
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    const today = new Date(), thirtyAgo = new Date(); thirtyAgo.setDate(today.getDate() - 30);
+    document.getElementById('startDate').value = thirtyAgo.toISOString().split('T')[0];
+    document.getElementById('endDate').value = today.toISOString().split('T')[0];
+    document.getElementById('reportStartDate').value = thirtyAgo.toISOString().split('T')[0];
+    document.getElementById('reportEndDate').value = today.toISOString().split('T')[0];
+
+    $('#analyticsTable').DataTable({ pageLength: 10, lengthMenu: [5,10,25,50,100], responsive: true });
+
+    document.querySelectorAll('.time-period-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.time-period-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            currentFilters.period = this.dataset.period;
+            updateDateRangeByPeriod();
+            loadAnalyticsData();
+        });
+    });
+
+    document.getElementById('applyFilters').addEventListener('click', applyFilters);
+    document.getElementById('resetFilters').addEventListener('click', resetFilters);
+    document.getElementById('refreshAnalytics').addEventListener('click', loadAnalyticsData);
+    document.getElementById('startDate').addEventListener('change', function() { currentFilters.startDate = this.value; loadAnalyticsData(); });
+    document.getElementById('endDate').addEventListener('change', function() { currentFilters.endDate = this.value; loadAnalyticsData(); });
+
+    loadAnalyticsData();
+});
+
+function updateDateRangeByPeriod() {
+    const today = new Date(), start = new Date();
+    switch(currentFilters.period) {
+        case 'today': break;
+        case 'week': start.setDate(today.getDate() - 7); break;
+        case 'month': start.setMonth(today.getMonth() - 1); break;
+        case 'quarter': start.setMonth(today.getMonth() - 3); break;
+        case 'year': start.setFullYear(today.getFullYear() - 1); break;
+        case 'all': start.setFullYear(2020,0,1); break;
+    }
+    document.getElementById('startDate').value = start.toISOString().split('T')[0];
+    document.getElementById('endDate').value = today.toISOString().split('T')[0];
+    currentFilters.startDate = start.toISOString().split('T')[0];
+    currentFilters.endDate = today.toISOString().split('T')[0];
+}
+
+function applyFilters() {
+    currentFilters = {
+        startDate: document.getElementById('startDate').value,
+        endDate: document.getElementById('endDate').value,
+        category: document.getElementById('categoryFilter').value,
+        district: document.getElementById('districtFilter').value,
+        period: currentFilters.period
+    };
+    loadAnalyticsData();
+}
+
+function resetFilters() {
+    document.getElementById('startDate').value = '{{ default_start_date }}';
+    document.getElementById('endDate').value = '{{ default_end_date }}';
+    document.getElementById('categoryFilter').value = 'all';
+    document.getElementById('districtFilter').value = 'all';
+    document.querySelectorAll('.time-period-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('.time-period-btn[data-period="today"]').classList.add('active');
+    currentFilters = { startDate: '{{ default_start_date }}', endDate: '{{ default_end_date }}', category: 'all', district: 'all', period: 'today' };
+    loadAnalyticsData();
+}
+
+function loadAnalyticsData() {
+    const params = new URLSearchParams({
+        start_date: currentFilters.startDate,
+        end_date: currentFilters.endDate,
+        category: currentFilters.category,
+        district: currentFilters.district
+    });
+    fetch(`/api/analytics?${params}`)
+        .then(r => r.json())
+        .then(data => {
+            analyticsData = data;
+            updateMetrics(data.metrics);
+            updateCharts(data.charts);
+            updateTable(data.incidents);
+        })
+        .catch(console.error);
+}
+
+function updateMetrics(metrics) {
+    document.getElementById('totalIncidents').textContent = metrics.total_incidents.toLocaleString();
+    document.getElementById('resolvedIncidents').textContent = metrics.resolved_incidents.toLocaleString();
+    document.getElementById('avgResponseTime').textContent = metrics.avg_response_time;
+    document.getElementById('activeUsers').textContent = metrics.active_users.toLocaleString();
+    // trends are placeholder, you can compute later
+}
+
+function updateCharts(chartData) {
+    if (charts.categoryChart) charts.categoryChart.destroy();
+    charts.categoryChart = new ApexCharts(document.querySelector("#categoryChart"), {
+        series: chartData.category_distribution.values,
+        chart: { type: 'donut', height: 300 },
+        labels: chartData.category_distribution.labels,
+        colors: ['#28a745','#20c997','#17a2b8','#ffc107','#fd7e14','#dc3545','#6c757d','#343a40'],
+        legend: { position: 'bottom' },
+        dataLabels: { enabled: true, formatter: val => Math.round(val)+"%" }
+    });
+    charts.categoryChart.render();
+
+    if (charts.monthlyTrendChart) charts.monthlyTrendChart.destroy();
+    charts.monthlyTrendChart = new ApexCharts(document.querySelector("#monthlyTrendChart"), {
+        series: [{ name: 'Incidents', data: chartData.monthly_trend.values }],
+        chart: { type: 'area', height: 300, zoom: { enabled: false } },
+        stroke: { curve: 'smooth', width: 2 },
+        colors: ['#28a745'],
+        xaxis: { categories: chartData.monthly_trend.labels, type: 'datetime' },
+        yaxis: { title: { text: 'Number of Incidents' } },
+        fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.7, opacityTo: 0.3, stops: [0,90,100] } }
+    });
+    charts.monthlyTrendChart.render();
+
+    if (charts.districtChart) charts.districtChart.destroy();
+    charts.districtChart = new ApexCharts(document.querySelector("#districtChart"), {
+        series: [{ data: chartData.district_distribution.values }],
+        chart: { type: 'bar', height: 300 },
+        plotOptions: { bar: { horizontal: true, borderRadius: 4 } },
+        colors: ['#20c997'],
+        dataLabels: { enabled: true },
+        xaxis: { categories: chartData.district_distribution.labels }
+    });
+    charts.districtChart.render();
+
+    if (charts.responseTimeChart) charts.responseTimeChart.destroy();
+    charts.responseTimeChart = new ApexCharts(document.querySelector("#responseTimeChart"), {
+        series: [parseFloat(chartData.response_time.average) || 0],
+        chart: { type: 'radialBar', height: 300 },
+        plotOptions: { radialBar: { dataLabels: { name: { show: false }, value: { fontSize: '22px' } } } },
+        labels: ['Average Response Time']
+    });
+    charts.responseTimeChart.render();
+}
+
+function updateTable(incidents) {
+    const tbody = document.getElementById('analyticsTableBody');
+    tbody.innerHTML = '';
+    incidents.forEach(i => {
+        const row = tbody.insertRow();
+        row.innerHTML = `<td>#${i.id}</td><td>${i.title}</td><td><span class="badge bg-secondary">${i.category||'Uncategorized'}</span></td><td><span class="badge ${i.status==='pending'?'bg-warning':i.status==='verified'?'bg-info':i.status==='resolved'?'bg-success':'bg-danger'}">${i.status}</span></td><td>${i.district||'N/A'}</td><td>${i.reporter}</td><td>${i.created_at}</td><td>${i.response_time}</td><td><button class="btn btn-sm btn-outline-primary" onclick="window.location.href='/view-incident/${i.id}'"><i class="bi bi-eye"></i></button></td>`;
+    });
+    $('#analyticsTable').DataTable().clear().rows.add($('#analyticsTableBody tr')).draw();
+}
+
+function exportChart(chartId, filename) {
+    if (charts[chartId]) {
+        charts[chartId].dataURI().then(({ imgURI }) => {
+            const a = document.createElement('a'); a.href = imgURI; a.download = filename; a.click();
+        });
+    }
+}
+
+function exportTableToCSV() {
+    const rows = document.querySelectorAll('#analyticsTable tr');
+    let csv = [];
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('th, td');
+        const rowData = Array.from(cells).map(cell => `"${cell.textContent.trim()}"`).join(',');
+        csv.push(rowData);
+    });
+    const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `analytics_${new Date().toISOString().split('T')[0]}.csv`; a.click();
+}
+
+function exportTableToExcel() {
+    const wb = XLSX.utils.table_to_book(document.getElementById('analyticsTable'), { sheet: "Incidents" });
+    XLSX.writeFile(wb, `analytics_${new Date().toISOString().split('T')[0]}.xlsx`);
+}
+
+function exportTableToPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.text('Environmental Incidents Report', 14, 15);
+    doc.setFontSize(10); doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 22);
+    doc.autoTable({ html: '#analyticsTable', startY: 30, theme: 'grid', headStyles: { fillColor: [40,167,69] } });
+    doc.save(`analytics_${new Date().toISOString().split('T')[0]}.pdf`);
+}
+
+function exportFullReport(format) {
+    fetch('/api/analytics/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format: format, filters: currentFilters })
+    })
+    .then(r => r.blob())
+    .then(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `report_${new Date().toISOString().split('T')[0]}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+        a.click();
+    })
+    .catch(console.error);
+}
+
+function generateTopCategoriesReport() { exportFullReport('pdf'); }  // simplified – could call specific endpoint
+function generateDistrictReport() { exportFullReport('pdf'); }
+function generateMonthlyReport() { exportFullReport('pdf'); }
+function generateCustomReport() { exportFullReport('pdf'); }
+</script>
+{% endblock %}

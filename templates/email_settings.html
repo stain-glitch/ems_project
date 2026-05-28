@@ -1,0 +1,178 @@
+{% extends "layout.html" %}
+{% block title %}Email Alert Settings{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h3><i class="bi bi-envelope-gear"></i> Email Alert Settings</h3>
+      <a href="{{ url_for('admin_dashboard') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back
+      </a>
+    </div>
+
+    <!-- Status Banner -->
+    {% if email_configured %}
+    <div class="alert alert-success d-flex align-items-center mb-4">
+      <i class="bi bi-check-circle-fill me-2 fs-5"></i>
+      <div>
+        <strong>Email alerts are active.</strong>
+        Emergency incidents (Wildfire, Poaching) will trigger automatic email notifications
+        to all relevant district/department admins.
+      </div>
+    </div>
+    {% else %}
+    <div class="alert alert-warning d-flex align-items-center mb-4">
+      <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i>
+      <div>
+        <strong>Email alerts are not configured.</strong>
+        Fill in your SMTP credentials below to enable emergency email notifications.
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- SMTP Settings Card -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-header bg-dark text-white">
+        <strong><i class="bi bi-server"></i> SMTP Configuration</strong>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('email_settings') }}">
+
+          <div class="row mb-3">
+            <div class="col-md-8">
+              <label class="form-label fw-bold">SMTP Server <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" name="mail_server"
+                     value="{{ mail_server }}" placeholder="smtp.gmail.com" required>
+              <div class="form-text">Your email provider's outgoing mail server.</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">Port <span class="text-danger">*</span></label>
+              <input type="number" class="form-control" name="mail_port"
+                     value="{{ mail_port }}" placeholder="587" required>
+              <div class="form-text">587 (TLS) or 465 (SSL).</div>
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <div class="form-check form-switch mt-4">
+                <input class="form-check-input" type="checkbox" id="mail_use_tls"
+                       name="mail_use_tls" {% if mail_use_tls %}checked{% endif %}>
+                <label class="form-check-label" for="mail_use_tls">
+                  Use TLS <span class="text-muted small">(recommended for port 587)</span>
+                </label>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-check form-switch mt-4">
+                <input class="form-check-input" type="checkbox" id="mail_use_ssl"
+                       name="mail_use_ssl" {% if mail_use_ssl %}checked{% endif %}>
+                <label class="form-check-label" for="mail_use_ssl">
+                  Use SSL <span class="text-muted small">(for port 465)</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-bold">Email Username <span class="text-danger">*</span></label>
+              <input type="email" class="form-control" name="mail_username"
+                     value="{{ mail_username }}" placeholder="alerts@yourorg.mw" required>
+              <div class="form-text">The account used to send alert emails.</div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold">Password</label>
+              <input type="password" class="form-control" name="mail_password"
+                     placeholder="{% if mail_username %}Leave blank to keep existing{% else %}Enter password{% endif %}">
+              <div class="form-text">
+                For Gmail, use an
+                <a href="https://myaccount.google.com/apppasswords" target="_blank">App Password</a>.
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label fw-bold">Default Sender Display Name</label>
+            <input type="text" class="form-control" name="mail_sender"
+                   value="{{ mail_sender }}" placeholder="ecoWatch Alerts <noreply@ecowatch.mw>">
+            <div class="form-text">How the sender name appears in recipients' inboxes.</div>
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center">
+            <button type="submit" class="btn btn-success">
+              <i class="bi bi-save"></i> Save Settings
+            </button>
+            {% if email_configured %}
+            <button type="button" class="btn btn-outline-primary" id="testEmailBtn">
+              <i class="bi bi-send"></i> Send Test Email to {{ current_user.email }}
+            </button>
+            {% endif %}
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- How it works -->
+    <div class="card border-0 bg-light">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3"><i class="bi bi-info-circle text-primary"></i> How Emergency Email Alerts Work</h6>
+        <div class="row g-3">
+          <div class="col-md-4 text-center">
+            <div class="fs-2">📍</div>
+            <strong class="d-block small">Incident Reported</strong>
+            <p class="text-muted small mb-0">A citizen submits a Wildfire or Poaching incident with a district selected.</p>
+          </div>
+          <div class="col-md-4 text-center">
+            <div class="fs-2">🎯</div>
+            <strong class="d-block small">Smart Routing</strong>
+            <p class="text-muted small mb-0">ecoWatch identifies admins in the matching district and department.</p>
+          </div>
+          <div class="col-md-4 text-center">
+            <div class="fs-2">📧</div>
+            <strong class="d-block small">Instant Alert</strong>
+            <p class="text-muted small mb-0">An email is dispatched immediately in the background to all matched admins.</p>
+          </div>
+        </div>
+        <hr>
+        <p class="small text-muted mb-0">
+          <strong>Emergency categories:</strong> Wildfire, Poaching. All other categories generate in-app notifications only.<br>
+          <strong>Routing:</strong> Exact district + department match → district-only match → department-only → all admins (fallback).
+        </p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+document.getElementById('testEmailBtn')?.addEventListener('click', function() {
+    const btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Sending…';
+    fetch("{{ url_for('test_email') }}", { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                btn.innerHTML = '<i class="bi bi-check-circle"></i> Sent!';
+                btn.className = 'btn btn-success';
+                setTimeout(() => {
+                    btn.innerHTML = '<i class="bi bi-send"></i> Send Test Email to {{ current_user.email }}';
+                    btn.className = 'btn btn-outline-primary';
+                    btn.disabled = false;
+                }, 4000);
+            } else {
+                alert('Failed to send test email:\n\n' + data.error);
+                btn.innerHTML = '<i class="bi bi-send"></i> Send Test Email to {{ current_user.email }}';
+                btn.disabled = false;
+            }
+        })
+        .catch(() => {
+            alert('Network error — check the server logs.');
+            btn.disabled = false;
+        });
+});
+</script>
+{% endblock %}

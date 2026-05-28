@@ -1,0 +1,20 @@
+{% extends "layout.html" %}
+
+{% block title %}Train Classifier{% endblock %}
+
+{% block content %}
+<div class="container mt-4"><div class="row">
+    <div class="col-md-8">
+        <div class="card"><div class="card-header bg-success text-white"><h5 class="mb-0">Train AI Classifier</h5></div><div class="card-body">
+            <form method="POST" action="/admin/train">
+                <div class="mb-3"><label class="form-label">Example Text</label><textarea class="form-control" name="text" rows="3" required placeholder="Enter example incident description..."></textarea></div>
+                <div class="row mb-3"><div class="col-md-6"><label class="form-label">Category</label><select class="form-select" name="category" required><option value="">Select category</option><option value="deforestation">Deforestation</option><option value="pollution">Pollution</option><option value="poaching">Poaching</option><option value="mining">Illegal Mining</option><option value="charcoal">Charcoal Burning</option><option value="dumping">Illegal Dumping</option></select></div><div class="col-md-6"><label class="form-label">Language</label><select class="form-select" name="language" required><option value="en">English</option><option value="ny">Chichewa</option></select></div></div>
+                <button type="submit" class="btn btn-success"><i class="bi bi-plus-circle"></i> Add Training Example</button>
+            </form>
+        </div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="card"><div class="card-header"><h5 class="mb-0">Current Keywords</h5></div><div class="card-body">{% for category, keywords in keyword_summary.items() %}<div class="mb-3"><h6>{{ category|title }}</h6><div class="d-flex flex-wrap gap-1">{% for kw in keywords[:10] %}<span class="badge bg-secondary">{{ kw }}</span>{% endfor %}{% if keywords|length > 10 %}<span class="badge bg-light text-dark">+{{ keywords|length - 10 }} more</span>{% endif %}</div></div>{% endfor %}</div></div>
+    </div>
+</div></div>
+{% endblock %}

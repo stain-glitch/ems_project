@@ -1,0 +1,124 @@
+{% extends "layout.html" %}
+{% block title %}Manage Incidents{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3><i class="bi bi-list-check"></i> Incidents
+        <small class="text-muted fs-6">— {{ current_user.department or 'All Depts' }}, {{ current_user.district or 'All Districts' }}</small>
+    </h3>
+    <div>
+        <select id="statusFilter" class="form-select form-select-sm d-inline-block w-auto me-2" onchange="filterTable()">
+            <option value="">All Statuses</option>
+            <option value="pending">Pending</option>
+            <option value="verified">Verified</option>
+            <option value="resolved">Resolved</option>
+            <option value="rejected">Rejected</option>
+        </select>
+        <select id="categoryFilter" class="form-select form-select-sm d-inline-block w-auto" onchange="filterTable()">
+            <option value="">All Categories</option>
+            <option value="dumping">Illegal Dumping</option>
+            <option value="pollution">Pollution</option>
+            <option value="deforestation">Deforestation</option>
+            <option value="charcoal">Charcoal</option>
+            <option value="poaching">Poaching</option>
+            <option value="mining">Mining</option>
+            <option value="wildfire">Wildfire</option>
+            <option value="other">Other</option>
+        </select>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="incidentsTable">
+                <thead class="table-dark">
+                    <tr>
+                        <th>#</th>
+                        <th>Category</th>
+                        <th>District</th>
+                        <th>Department</th>
+                        <th>Description</th>
+                        <th>Reporter</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for inc in incidents %}
+                    <tr data-status="{{ inc.status }}" data-category="{{ inc.category }}"
+                        {% if inc.is_emergency %}class="table-danger"{% endif %}>
+                        <td>{{ inc.id }}</td>
+                        <td>
+                            {% if inc.is_emergency %}<span title="Emergency">🚨</span>{% endif %}
+                            <strong>{{ inc.title }}</strong>
+                        </td>
+                        <td>{{ inc.district or '—' }}</td>
+                        <td><span class="badge bg-secondary">{{ inc.department or '—' }}</span></td>
+                        <td>{{ inc.description[:60] }}{% if inc.description|length > 60 %}...{% endif %}</td>
+                        <td>{{ inc.reporter.username if inc.reporter else '—' }}</td>
+                        <td>{{ inc.created_at.strftime('%d %b %Y') }}</td>
+                        <td>
+                            <select class="form-select form-select-sm status-select"
+                                    data-id="{{ inc.id }}" onchange="updateStatus(this)"
+                                    style="min-width:110px">
+                                <option value="pending"  {% if inc.status == 'pending'  %}selected{% endif %}>Pending</option>
+                                <option value="verified" {% if inc.status == 'verified' %}selected{% endif %}>Verified</option>
+                                <option value="resolved" {% if inc.status == 'resolved' %}selected{% endif %}>Resolved</option>
+                                <option value="rejected" {% if inc.status == 'rejected' %}selected{% endif %}>Rejected</option>
+                            </select>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('view_incident', incident_id=inc.id) }}"
+                               class="btn btn-sm btn-outline-primary" title="View">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                            <button class="btn btn-sm btn-outline-danger" title="Delete"
+                                    onclick="deleteIncident({{ inc.id }})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="9" class="text-center text-muted py-4">No incidents in your scope yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function updateStatus(select) {
+    const id = select.dataset.id;
+    const status = select.value;
+    fetch(`/api/incident/${id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+    }).then(r => r.json()).then(data => {
+        if (!data.success) alert('Update failed.');
+    }).catch(() => alert('Network error.'));
+}
+
+function deleteIncident(id) {
+    if (!confirm('Delete this incident permanently?')) return;
+    fetch(`/api/incident/${id}`, { method: 'DELETE' })
+        .then(r => r.json()).then(data => {
+            if (data.success) location.reload();
+            else alert('Delete failed.');
+        });
+}
+
+function filterTable() {
+    const status   = document.getElementById('statusFilter').value;
+    const category = document.getElementById('categoryFilter').value;
+    document.querySelectorAll('#incidentsTable tbody tr[data-status]').forEach(row => {
+        const matchStatus   = !status   || row.dataset.status   === status;
+        const matchCategory = !category || row.dataset.category === category;
+        row.style.display = (matchStatus && matchCategory) ? '' : 'none';
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,86 @@
+{% extends "layout.html" %}
+
+{% block title %}Public Incidents - Environmental Monitoring{% endblock %}
+
+{% block extra_css %}
+<style>
+    .incident-card { transition: transform 0.2s; border-left: 4px solid transparent; }
+    .incident-card:hover { transform: translateY(-3px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+    .incident-card.pending { border-left-color: #ffc107; }
+    .incident-card.verified { border-left-color: #0dcaf0; }
+    .incident-card.resolved { border-left-color: #198754; }
+    .incident-card.rejected { border-left-color: #dc3545; }
+    .filter-badges .badge { cursor: pointer; transition: all 0.2s; }
+    .filter-badges .badge:hover { transform: translateY(-2px); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2><i class="bi bi-eye"></i> Public Incident Tracker</h2>
+        <p class="text-muted">View all reported environmental incidents and their current status. This information is publicly available to promote transparency.</p>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6"><div class="mb-3"><label class="form-label">Filter by Status</label><div class="filter-badges"><span class="badge bg-warning me-2 mb-2" onclick="filterByStatus('pending')">Pending</span><span class="badge bg-info me-2 mb-2" onclick="filterByStatus('verified')">Verified</span><span class="badge bg-success me-2 mb-2" onclick="filterByStatus('resolved')">Resolved</span><span class="badge bg-danger me-2 mb-2" onclick="filterByStatus('rejected')">Rejected</span><span class="badge bg-secondary me-2 mb-2" onclick="filterByStatus('all')">All</span></div></div></div>
+                    <div class="col-md-6"><div class="mb-3"><label class="form-label">Filter by Category</label><select class="form-select" id="categoryFilter" onchange="filterByCategory(this.value)"><option value="all">All Categories</option>{% set categories = [] %}{% for inc in incidents %}{% if inc.category and inc.category not in categories %}{% set _ = categories.append(inc.category) %}{% endif %}{% endfor %}{% for cat in categories %}<option value="{{ cat }}">{{ cat|title }}</option>{% endfor %}</select></div></div>
+                </div>
+                <div class="row"><div class="col-md-6"><div class="input-group mb-3"><input type="text" class="form-control" id="searchInput" placeholder="Search incidents..." onkeyup="searchIncidents()"><button class="btn btn-outline-secondary" onclick="clearFilters()"><i class="bi bi-x-circle"></i> Clear</button></div></div><div class="col-md-6"><div class="d-flex justify-content-end"><span id="filterStatus" class="badge bg-info">Showing all incidents</span></div></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Incidents Grid -->
+<div class="row">
+    {% for inc in incidents %}
+    <div class="col-md-6 col-lg-4 mb-4 incident-card-container" data-status="{{ inc.status }}" data-category="{{ inc.category or 'other' }}" data-title="{{ inc.title|lower }}" data-description="{{ inc.description|lower }}">
+        <div class="card incident-card h-100 {{ inc.status }}">
+            <div class="card-body">
+                {% if inc.is_emergency %}<span class="badge bg-danger mb-2">🚨 EMERGENCY</span>{% endif %}
+                <h5 class="card-title">{{ inc.title }}</h5>
+                <p class="card-text">{{ inc.description[:150] }}{% if inc.description|length > 150 %}...{% endif %}</p>
+                <div class="mb-2">
+                    <span class="badge {% if inc.category == 'deforestation' %}bg-success{% elif inc.category == 'pollution' %}bg-warning{% elif inc.category == 'poaching' %}bg-danger{% elif inc.category == 'mining' %}bg-dark{% elif inc.category == 'charcoal' %}bg-secondary{% elif inc.category == 'dumping' %}bg-info{% else %}bg-secondary{% endif %}">{{ inc.category|title if inc.category else 'Uncategorized' }}</span>
+                    <span class="badge {% if inc.status == 'pending' %}bg-warning{% elif inc.status == 'verified' %}bg-info{% elif inc.status == 'resolved' %}bg-success{% elif inc.status == 'rejected' %}bg-danger{% else %}bg-secondary{% endif %}">{{ inc.status|title }}</span>
+                </div>
+                <p class="card-text"><small class="text-muted"><i class="bi bi-geo-alt"></i> {% if inc.latitude and inc.longitude %}{{ inc.latitude|round(4) }}, {{ inc.longitude|round(4) }}{% if inc.location_name %}<br>{{ inc.location_name }}{% endif %}{% else %}Location not specified{% endif %}</small><br><small class="text-muted"><i class="bi bi-calendar"></i> Reported: {{ inc.created_at.strftime('%Y-%m-%d %H:%M') if inc.created_at else 'N/A' }}</small></p>
+                <a href="{{ url_for('view_incident', incident_id=inc.id) }}" class="btn btn-sm btn-outline-primary">View Details</a>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-12"><div class="alert alert-info">No incidents reported yet. Be the first to report an environmental incident.</div></div>
+    {% endfor %}
+</div>
+
+<script>
+function filterByStatus(status) {
+    const cards = document.querySelectorAll('.incident-card-container');
+    let visible = 0;
+    cards.forEach(container => { const card = container.querySelector('.incident-card'); if (status === 'all' || card.classList.contains(status)) { container.style.display = ''; visible++; } else { container.style.display = 'none'; } });
+    document.getElementById('filterStatus').textContent = `Showing ${visible} incidents (${status === 'all' ? 'all' : status})`;
+}
+function filterByCategory(category) {
+    const cards = document.querySelectorAll('.incident-card-container');
+    let visible = 0;
+    cards.forEach(container => { if (category === 'all' || container.dataset.category === category) { container.style.display = ''; visible++; } else { container.style.display = 'none'; } });
+    document.getElementById('filterStatus').textContent = `Showing ${visible} incidents (${category === 'all' ? 'all categories' : category})`;
+}
+function searchIncidents() {
+    const term = document.getElementById('searchInput').value.toLowerCase();
+    const cards = document.querySelectorAll('.incident-card-container');
+    let visible = 0;
+    cards.forEach(container => { const title = container.dataset.title || ''; const desc = container.dataset.description || ''; if (title.includes(term) || desc.includes(term)) { container.style.display = ''; visible++; } else { container.style.display = 'none'; } });
+    document.getElementById('filterStatus').textContent = `Showing ${visible} incidents matching "${term}"`;
+}
+function clearFilters() { document.getElementById('searchInput').value = ''; document.getElementById('categoryFilter').value = 'all'; filterByStatus('all'); }
+</script>
+{% endblock %}

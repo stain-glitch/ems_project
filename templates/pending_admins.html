@@ -1,0 +1,146 @@
+{% extends "layout.html" %}
+{% block title %}Admin Approvals{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h3 class="mb-0"><i class="bi bi-person-check"></i> Admin Registration Approvals</h3>
+    <span class="text-muted small">Super Admin — system-wide oversight</span>
+  </div>
+  {% if pending %}
+  <span class="badge bg-warning text-dark fs-6">{{ pending|length }} Pending</span>
+  {% endif %}
+</div>
+
+<!-- Pending Applications -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-warning text-dark">
+    <strong><i class="bi bi-hourglass-split"></i> Pending Applications ({{ pending|length }})</strong>
+  </div>
+  <div class="card-body p-0">
+    {% if pending %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Applicant</th>
+            <th>Email</th>
+            <th>District</th>
+            <th>Department</th>
+            <th>Applied</th>
+            <th>ID Document</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for user in pending %}
+          <tr>
+            <td>
+              <strong>{{ user.username }}</strong>
+            </td>
+            <td>{{ user.email }}</td>
+            <td>{{ user.district or '—' }}</td>
+            <td><span class="badge bg-secondary">{{ user.department or '—' }}</span></td>
+            <td class="text-muted small">{{ user.created_at.strftime('%d %b %Y %H:%M') }}</td>
+            <td>
+              {% if user.id_document_path %}
+              <a href="{{ url_for('view_id_document', user_id=user.id) }}" target="_blank"
+                 class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-file-earmark-person"></i> View ID
+              </a>
+              {% else %}
+              <span class="text-muted small">No document</span>
+              {% endif %}
+            </td>
+            <td>
+              <!-- Approve -->
+              <form method="POST" action="{{ url_for('approve_admin', user_id=user.id) }}"
+                    class="d-inline" onsubmit="return confirm('Approve {{ user.username }} as admin?')">
+                <button class="btn btn-sm btn-success">
+                  <i class="bi bi-check-lg"></i> Approve
+                </button>
+              </form>
+              <!-- Reject -->
+              <button class="btn btn-sm btn-outline-danger ms-1"
+                      onclick="showRejectForm({{ user.id }}, '{{ user.username }}')">
+                <i class="bi bi-x-lg"></i> Reject
+              </button>
+              <!-- Reject form (hidden, shown inline) -->
+              <div id="reject-form-{{ user.id }}" class="mt-2" style="display:none;">
+                <form method="POST" action="{{ url_for('reject_admin', user_id=user.id) }}">
+                  <div class="input-group input-group-sm">
+                    <input type="text" class="form-control" name="reason"
+                           placeholder="Reason for rejection (optional)">
+                    <button class="btn btn-danger" type="submit">Confirm Reject</button>
+                    <button class="btn btn-outline-secondary" type="button"
+                            onclick="document.getElementById('reject-form-{{ user.id }}').style.display='none'">
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-5">
+      <i class="bi bi-check2-circle fs-2 d-block text-success mb-2"></i>
+      No pending admin applications.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Recently Rejected -->
+{% if rejected %}
+<div class="card shadow-sm">
+  <div class="card-header bg-light">
+    <strong><i class="bi bi-x-circle text-danger"></i> Recently Rejected ({{ rejected|length }})</strong>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Applicant</th>
+          <th>District</th>
+          <th>Department</th>
+          <th>Reason</th>
+          <th>Date</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in rejected %}
+        <tr class="table-danger">
+          <td><strong>{{ user.username }}</strong><br><small class="text-muted">{{ user.email }}</small></td>
+          <td>{{ user.district or '—' }}</td>
+          <td>{{ user.department or '—' }}</td>
+          <td class="small text-muted">{{ user.rejection_reason or '—' }}</td>
+          <td class="small text-muted">{{ user.created_at.strftime('%d %b %Y') }}</td>
+          <td>
+            <!-- Allow re-approval of rejected applicants -->
+            <form method="POST" action="{{ url_for('approve_admin', user_id=user.id) }}"
+                  class="d-inline" onsubmit="return confirm('Re-approve {{ user.username }}?')">
+              <button class="btn btn-sm btn-outline-success">
+                <i class="bi bi-arrow-counterclockwise"></i> Re-approve
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<script>
+function showRejectForm(id, name) {
+  const el = document.getElementById('reject-form-' + id);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+{% endblock %}

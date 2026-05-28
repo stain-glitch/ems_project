@@ -1,0 +1,82 @@
+{% extends "layout.html" %}
+
+{% block title %}Emergency Incidents{% endblock %}
+
+{% block extra_css %}
+<style>
+    .emergency-card { border-left: 5px solid #dc3545; background-color: #fff5f5; }
+    .emergency-badge { font-size: 1.2em; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2><i class="bi bi-exclamation-triangle-fill text-danger"></i> Emergency Incidents</h2>
+        <p class="text-muted">High-priority incidents requiring immediate attention (wildfires, poaching, etc.)</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0">All Emergency Reports ({{ emergencies|length }})</h5>
+            </div>
+            <div class="card-body">
+                {% if emergencies %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead><tr><th>ID</th><th>Title</th><th>Category</th><th>Status</th><th>Location</th><th>Reporter</th><th>Date</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            {% for inc in emergencies %}
+                            <tr class="{% if inc.status != 'resolved' %}table-danger{% endif %}">
+                                <td>#{{ inc.id }}</td>
+                                <td><strong>{{ inc.title }}</strong></td>
+                                <td><span class="badge bg-danger">{{ inc.category|upper }}</span></td>
+                                <td>{% if inc.status == 'pending' %}<span class="badge bg-warning">Pending</span>{% elif inc.status == 'verified' %}<span class="badge bg-info">Verified</span>{% elif inc.status == 'resolved' %}<span class="badge bg-success">Resolved</span>{% else %}<span class="badge bg-secondary">{{ inc.status }}</span>{% endif %}</td>
+                                <td>{{ inc.location_name or 'N/A' }}</td>
+                                <td>{{ inc.reporter.username if inc.reporter else 'Anonymous' }}</td>
+                                <td>{{ inc.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>
+                                    <a href="{{ url_for('view_incident', incident_id=inc.id) }}" class="btn btn-sm btn-primary">View Details</a>
+                                    {% if inc.status != 'resolved' %}
+                                    <button class="btn btn-sm btn-success update-status" data-id="{{ inc.id }}" data-status="resolved">Resolve</button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-success">No emergency incidents reported. Good job!</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function updateStatus(incidentId, newStatus) {
+    if (!confirm(`Mark incident #${incidentId} as ${newStatus}?`)) return;
+    fetch(`/api/incident/${incidentId}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) location.reload();
+        else alert('Error: ' + (data.error || 'Unknown error'));
+    })
+    .catch(error => alert('Error updating status: ' + error));
+}
+
+document.querySelectorAll('.update-status').forEach(btn => {
+    btn.addEventListener('click', function() {
+        updateStatus(this.dataset.id, this.dataset.status);
+    });
+});
+</script>
+{% endblock %}

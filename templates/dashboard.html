@@ -1,0 +1,64 @@
+{% extends "layout.html" %}
+
+{% block title %}My Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stat-card { transition: transform 0.2s; border: none; }
+    .stat-card:hover { transform: translateY(-3px); }
+    .incident-image { width: 80px; height: 80px; object-fit: cover; border-radius: 5px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12"><h2><i class="bi bi-speedometer"></i> My Dashboard</h2><p class="text-muted">Welcome back, {{ current_user.username }}! Here are your reported incidents.</p></div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3"><div class="card stat-card bg-primary text-white"><div class="card-body text-center"><h5 class="card-title">Total Reports</h5><h2 class="display-4">{{ stats.total }}</h2></div></div></div>
+    <div class="col-md-3"><div class="card stat-card bg-warning text-dark"><div class="card-body text-center"><h5 class="card-title">Pending</h5><h2 class="display-4">{{ stats.pending }}</h2></div></div></div>
+    <div class="col-md-3"><div class="card stat-card bg-info text-white"><div class="card-body text-center"><h5 class="card-title">Verified</h5><h2 class="display-4">{{ stats.verified }}</h2></div></div></div>
+    <div class="col-md-3"><div class="card stat-card bg-success text-white"><div class="card-body text-center"><h5 class="card-title">Resolved</h5><h2 class="display-4">{{ stats.resolved }}</h2></div></div></div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center"><h5 class="mb-0"><i class="bi bi-list-ul"></i> My Incident Reports</h5><a href="{{ url_for('report_incident') }}" class="btn btn-success btn-sm"><i class="bi bi-plus-circle"></i> New Report</a></div>
+            <div class="card-body">
+                {% if incidents %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead><tr><th>ID</th><th>Title</th><th>Category</th><th>Status</th><th>Date</th><th>Image</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            {% for incident in incidents %}
+                            <tr>
+                                <td>#{{ incident.id }}</td>
+                                <td>{{ incident.title }}</td>
+                                <td><span class="badge bg-secondary">{{ incident.category|title if incident.category else 'Uncategorized' }}</span></td>
+                                <td>
+                                    {% if incident.status == 'pending' %}<span class="badge bg-warning">Pending</span>
+                                    {% elif incident.status == 'verified' %}<span class="badge bg-info">Verified</span>
+                                    {% elif incident.status == 'resolved' %}<span class="badge bg-success">Resolved</span>
+                                    {% elif incident.status == 'rejected' %}<span class="badge bg-danger">Rejected</span>
+                                    {% else %}<span class="badge bg-secondary">{{ incident.status }}</span>{% endif %}
+                                </td>
+                                <td>{{ incident.created_at.strftime('%Y-%m-%d') }}</td>
+                                <td>{% if incident.image_path %}<img src="{{ url_for('static', filename=incident.image_path) }}" class="incident-image">{% else %}<span class="text-muted">No image</span>{% endif %}</td>
+                                <td><button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#incidentModal{{ incident.id }}">View</button></td>
+                            </tr>
+                            <!-- Modal -->
+                            <div class="modal fade" id="incidentModal{{ incident.id }}" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Incident #{{ incident.id }}: {{ incident.title }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p><strong>Description:</strong> {{ incident.description }}</p><p><strong>Category:</strong> {{ incident.category|title if incident.category else 'Uncategorized' }}</p><p><strong>Status:</strong> <span class="badge {% if incident.status == 'pending' %}bg-warning{% elif incident.status == 'verified' %}bg-info{% elif incident.status == 'resolved' %}bg-success{% elif incident.status == 'rejected' %}bg-danger{% endif %}">{{ incident.status|title }}</span></p><p><strong>Location:</strong> {% if incident.latitude and incident.longitude %}{{ incident.latitude }}, {{ incident.longitude }}{% else %}Not specified{% endif %}</p><p><strong>Reported on:</strong> {{ incident.created_at.strftime('%Y-%m-%d %H:%M') }}</p>{% if incident.image_path %}<img src="{{ url_for('static', filename=incident.image_path) }}" class="img-fluid rounded">{% endif %}</div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button></div></div></div></div>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4"><h4>No incidents reported yet</h4><p class="text-muted">Start by reporting your first environmental incident</p><a href="{{ url_for('report_incident') }}" class="btn btn-success"><i class="bi bi-plus-circle"></i> Report First Incident</a></div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

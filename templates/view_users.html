@@ -1,0 +1,112 @@
+{% extends "layout.html" %}
+{% block title %}Manage Users{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h3 class="mb-0"><i class="bi bi-people"></i> Manage Users</h3>
+    <span class="text-muted small">{{ users|length }} accounts in the system</span>
+  </div>
+  {% if current_user.role == 'super_admin' %}
+  <a href="{{ url_for('pending_admins') }}" class="btn btn-warning btn-sm">
+    <i class="bi bi-person-check"></i> Admin Approvals
+  </a>
+  {% endif %}
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>#</th>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>District / Dept</th>
+            <th>Status</th>
+            <th>Joined</th>
+            <th>Reports</th>
+            {% if current_user.role == 'super_admin' %}<th>Actions</th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for user in users %}
+          <tr>
+            <td>{{ user.id }}</td>
+            <td><strong>{{ user.username }}</strong></td>
+            <td>{{ user.email }}</td>
+            <td>
+              <span class="badge
+                {% if user.role == 'super_admin' %}bg-dark
+                {% elif user.role == 'admin' %}bg-danger
+                {% else %}bg-primary{% endif %}">
+                {{ user.display_role }}
+              </span>
+            </td>
+            <td class="small text-muted">
+              {% if user.district %}{{ user.district }}{% endif %}
+              {% if user.department %}<br><em>{{ user.department }}</em>{% endif %}
+              {% if not user.district and not user.department %}—{% endif %}
+            </td>
+            <td>
+              {% if user.account_status == 'active' %}
+                <span class="badge bg-success">Active</span>
+              {% elif user.account_status == 'pending_approval' %}
+                <span class="badge bg-warning text-dark">Pending</span>
+              {% else %}
+                <span class="badge bg-danger">Rejected</span>
+              {% endif %}
+            </td>
+            <td class="small text-muted">{{ user.created_at.strftime('%d %b %Y') }}</td>
+            <td>{{ user.incidents|length }}</td>
+            {% if current_user.role == 'super_admin' %}
+            <td>
+              {% if user.role == 'admin' and user.id != current_user.id %}
+                {% if user.account_status == 'active' %}
+                  <button class="btn btn-sm btn-outline-danger"
+                          onclick="showRevokeForm({{ user.id }}, '{{ user.username }}')">
+                    <i class="bi bi-slash-circle"></i> Revoke
+                  </button>
+                  <div id="revoke-form-{{ user.id }}" class="mt-1" style="display:none;">
+                    <form method="POST" action="{{ url_for('revoke_admin', user_id=user.id) }}">
+                      <div class="input-group input-group-sm">
+                        <input type="text" class="form-control" name="reason" placeholder="Reason">
+                        <button class="btn btn-danger" type="submit">Confirm</button>
+                        <button type="button" class="btn btn-outline-secondary"
+                                onclick="document.getElementById('revoke-form-{{ user.id }}').style.display='none'">
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                {% elif user.account_status == 'pending_approval' %}
+                  <a href="{{ url_for('pending_admins') }}" class="btn btn-sm btn-outline-warning">Review</a>
+                {% else %}
+                  <form method="POST" action="{{ url_for('approve_admin', user_id=user.id) }}" class="d-inline"
+                        onsubmit="return confirm('Re-activate {{ user.username }}?')">
+                    <button class="btn btn-sm btn-outline-success">
+                      <i class="bi bi-arrow-counterclockwise"></i> Restore
+                    </button>
+                  </form>
+                {% endif %}
+              {% endif %}
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+function showRevokeForm(id, name) {
+  if (!confirm('Revoke access for ' + name + '? They will be unable to log in.')) return;
+  const el = document.getElementById('revoke-form-' + id);
+  el.style.display = 'block';
+}
+</script>
+{% endblock %}

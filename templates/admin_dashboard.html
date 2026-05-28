@@ -1,0 +1,158 @@
+{% extends "layout.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-0"><i class="bi bi-speedometer2"></i> Admin Dashboard</h2>
+        <span class="text-muted small">
+            <i class="bi bi-geo-alt"></i> {{ current_user.district or 'All Districts' }}
+            &nbsp;|&nbsp;
+            <i class="bi bi-building"></i> {{ current_user.department or 'All Departments' }}
+        </span>
+    </div>
+    {% if unread_notifications > 0 %}
+    <a href="{{ url_for('view_notifications') }}" class="btn btn-danger btn-sm position-relative">
+        <i class="bi bi-bell-fill"></i> Notifications
+        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning text-dark">
+            {{ unread_notifications }}
+        </span>
+    </a>
+    {% endif %}
+</div>
+
+{% if active_emergencies > 0 %}
+<div class="alert alert-danger d-flex align-items-center mb-4" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2 fs-4"></i>
+    <div>
+        <strong>🚨 {{ active_emergencies }} Active Emergency Incident(s)</strong> in your district/department.
+        <a href="{{ url_for('view_emergencies') }}" class="alert-link ms-2">View Now →</a>
+    </div>
+</div>
+{% endif %}
+
+<!-- Stats Cards -->
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card text-white bg-primary h-100">
+            <div class="card-body"><h6>Total Incidents</h6><h2>{{ total_incidents }}</h2></div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card text-white bg-warning h-100">
+            <div class="card-body"><h6>Pending</h6><h2>{{ pending_incidents }}</h2></div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card text-white bg-info h-100">
+            <div class="card-body"><h6>Verified</h6><h2>{{ verified_incidents }}</h2></div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card text-white bg-success h-100">
+            <div class="card-body"><h6>Resolved</h6><h2>{{ resolved_incidents }}</h2></div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Recent Incidents -->
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong><i class="bi bi-list-ul"></i> Recent Incidents</strong>
+                <a href="{{ url_for('view_incidents') }}" class="btn btn-sm btn-outline-success">View All</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Category</th>
+                                <th>District</th>
+                                <th>Department</th>
+                                <th>Status</th>
+                                <th>Date</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for inc in recent_incidents %}
+                            <tr {% if inc.is_emergency %}class="table-danger"{% endif %}>
+                                <td>
+                                    {% if inc.is_emergency %}<span class="badge bg-danger me-1">🚨</span>{% endif %}
+                                    {{ inc.title }}
+                                </td>
+                                <td>{{ inc.district or '—' }}</td>
+                                <td><span class="badge bg-secondary">{{ inc.department or '—' }}</span></td>
+                                <td>
+                                    <span class="badge bg-{% if inc.status == 'resolved' %}success{% elif inc.status == 'verified' %}info{% elif inc.status == 'rejected' %}danger{% else %}warning{% endif %}">
+                                        {{ inc.status }}
+                                    </span>
+                                </td>
+                                <td>{{ inc.created_at.strftime('%d %b %Y') }}</td>
+                                <td>
+                                    <a href="{{ url_for('view_incident', incident_id=inc.id) }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="6" class="text-center text-muted py-4">No incidents in your scope yet.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Links -->
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-header"><strong><i class="bi bi-grid"></i> Quick Actions</strong></div>
+            <div class="list-group list-group-flush">
+                <a href="{{ url_for('view_incidents') }}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-list-check text-primary"></i> Manage Incidents
+                </a>
+                <a href="{{ url_for('view_emergencies') }}" class="list-group-item list-group-item-action {% if active_emergencies > 0 %}list-group-item-danger{% endif %}">
+                    <i class="bi bi-exclamation-triangle text-danger"></i> Emergencies
+                    {% if active_emergencies > 0 %}<span class="badge bg-danger float-end">{{ active_emergencies }}</span>{% endif %}
+                </a>
+                <a href="{{ url_for('view_notifications') }}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-bell text-warning"></i> Notifications
+                    {% if unread_notifications > 0 %}<span class="badge bg-warning text-dark float-end">{{ unread_notifications }}</span>{% endif %}
+                </a>
+                <a href="{{ url_for('analytics_dashboard') }}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-bar-chart text-success"></i> Analytics
+                </a>
+                <a href="{{ url_for('map_view') }}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-map text-info"></i> Incident Map
+                </a>
+                <a href="{{ url_for('view_users') }}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-people text-secondary"></i> Manage Users
+                </a>
+                <a href="{{ url_for('email_settings') }}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-envelope-gear text-danger"></i> Email Alert Settings
+                </a>
+                {% if current_user.role == 'super_admin' %}
+                <a href="{{ url_for('pending_admins') }}" class="list-group-item list-group-item-action list-group-item-warning">
+                    <i class="bi bi-person-check text-warning"></i> Admin Approvals
+                </a>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Scope Info -->
+        <div class="card border-success">
+            <div class="card-header bg-success text-white"><strong><i class="bi bi-shield-check"></i> Your Scope</strong></div>
+            <div class="card-body small">
+                <p class="mb-1"><i class="bi bi-geo-alt-fill text-success"></i> <strong>District:</strong> {{ current_user.district or 'All Districts' }}</p>
+                <p class="mb-1"><i class="bi bi-building text-success"></i> <strong>Department:</strong> {{ current_user.department or 'All Departments' }}</p>
+                <hr class="my-2">
+                <p class="text-muted mb-0">You receive notifications for incidents in your district and department only.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ecoWatch — Test Email</title>
+<style>
+  body { margin: 0; padding: 0; background: #f4f4f4; font-family: Arial, sans-serif; }
+  .wrapper { max-width: 560px; margin: 40px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  .header { background: #27ae60; padding: 28px 32px; text-align: center; }
+  .header h1 { color: #fff; margin: 0; font-size: 20px; }
+  .body { padding: 28px 32px; text-align: center; }
+  .icon { font-size: 56px; margin-bottom: 12px; }
+  h2 { color: #27ae60; margin: 0 0 10px; }
+  p { color: #555; font-size: 14px; line-height: 1.6; }
+  .footer { background: #f8f9fa; padding: 16px 32px; text-align: center; font-size: 12px; color: #aaa; border-top: 1px solid #eee; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="header">
+    <h1>🌿 ecoWatch — Test Email</h1>
+  </div>
+  <div class="body">
+    <div class="icon">✅</div>
+    <h2>Email alerts are working!</h2>
+    <p>Hello <strong>{{ admin_name }}</strong>,</p>
+    <p>
+      Your ecoWatch email configuration is set up correctly.<br>
+      Emergency incident alerts (Wildfire, Poaching) will now be sent automatically
+      to the relevant district and department administrators.
+    </p>
+    <p style="color:#aaa; font-size:12px; margin-top:24px;">
+      This is a test email sent from the ecoWatch admin panel.<br>No action is required.
+    </p>
+  </div>
+  <div class="footer">
+    ecoWatch Environmental Monitoring System &bull; Malawi
+  </div>
+</div>
+</body>
+</html>
