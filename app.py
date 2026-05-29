@@ -1637,3 +1637,29 @@ if __name__ == '__main__':
 
         db.session.commit()
     app.run(debug=True, port=5000)
+    # Runs on every startup — gunicorn and local alike
+    with app.app_context():
+        db.create_all()
+        if not User.query.filter_by(email='superadmin@env.com').first():
+            db.session.add(User(
+                username='superadmin', email='superadmin@env.com',
+                password_hash=generate_password_hash('superadmin123'),
+                role='super_admin', account_status='active',
+            ))
+        if not User.query.filter_by(email='admin@env.com').first():
+            db.session.add(User(
+                username='admin', email='admin@env.com',
+                password_hash=generate_password_hash('admin123'),
+                role='admin', district='Lilongwe', department='General Administration',
+                account_status='active',
+            ))
+        if not User.query.filter_by(email='citizen@env.com').first():
+            db.session.add(User(
+                username='citizen', email='citizen@env.com',
+                password_hash=generate_password_hash('citizen123'),
+                role='citizen', account_status='active',
+            ))
+        db.session.commit()
+
+    if __name__ == '__main__':
+        app.run(debug=True, port=5000)
