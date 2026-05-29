@@ -2,6 +2,7 @@ Flask
 Flask-SQLAlchemy
 Flask-Login
 Flask-Mail
+Flask-CORS
 Werkzeug
 reportlab
 gunicorn

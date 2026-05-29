@@ -16,6 +16,7 @@ from flask_login import (
     logout_user, current_user
 )
 from flask_mail import Mail, Message
+from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
@@ -24,7 +25,7 @@ from werkzeug.utils import secure_filename
 # ----------------------------------------------------------------------
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'change-this-in-production'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////data/environment.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///environment.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'static/images/uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
@@ -46,6 +47,7 @@ app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', 'ecoWa
 
 db = SQLAlchemy(app)
 mail = Mail(app)
+CORS(app, supports_credentials=True)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
@@ -752,7 +754,125 @@ def view_incidents():
 @admin_required
 def view_users():
     users = User.query.order_by(User.created_at.desc()).all()
-    return render_template('view_users.html', users=users)
+    return render_template('view_users.html',
+                           users=users,
+                           districts=MALAWI_DISTRICTS,
+                           departments=DEPARTMENTS)
+
+
+@app.route('/admin/users/<int:user_id>/edit', methods=['POST'])
+@login_required
+@admin_required
+def edit_user(user_id):
+    user = User.query.get_or_404(user_id)
+
+    # Regular admins can only edit citizens; super_admin can edit anyone except other super_admins
+    if current_user.role != 'super_admin':
+        if user.role != 'citizen':
+            return jsonify({'success': False, 'error': 'You can only edit citizen accounts.'}), 403
+    else:
+        if user.role == 'super_admin' and user.id != current_user.id:
+            return jsonify({'success': False, 'error': 'Cannot edit another super admin.'}), 403
+
+    data = request.get_json()
+    if 'username' in data and data['username'].strip():
+        existing = User.query.filter_by(username=data['username'].strip()).first()
+        if existing and existing.id != user.id:
+            return jsonify({'success': False, 'error': 'Username already taken.'})
+        user.username = data['username'].strip()
+
+    if 'email' in data and data['email'].strip():
+        existing = User.query.filter_by(email=data['email'].strip()).first()
+        if existing and existing.id != user.id:
+            return jsonify({'success': False, 'error': 'Email already in use.'})
+        user.email = data['email'].strip()
+
+    if current_user.role == 'super_admin':
+        if 'role' in data and data['role'] in ('citizen', 'admin'):
+            user.role = data['role']
+        if 'district' in data:
+            user.district = data['district'].strip() or None
+        if 'department' in data:
+            user.department = data['department'].strip() or None
+        if 'account_status' in data and data['account_status'] in ('active', 'pending_approval', 'rejected'):
+            user.account_status = data['account_status']
+
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'User {user.username} updated.'})
+
+
+@app.route('/admin/users/<int:user_id>/reset-password', methods=['POST'])
+@login_required
+@admin_required
+def reset_user_password(user_id):
+    user = User.query.get_or_404(user_id)
+
+    if current_user.role != 'super_admin':
+        if user.role != 'citizen':
+            return jsonify({'success': False, 'error': 'You can only reset passwords for citizen accounts.'}), 403
+
+    data = request.get_json()
+    new_password = data.get('password', '').strip()
+    if len(new_password) < 6:
+        return jsonify({'success': False, 'error': 'Password must be at least 6 characters.'})
+
+    user.password_hash = generate_password_hash(new_password)
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'Password for {user.username} has been reset.'})
+
+
+@app.route('/admin/users/<int:user_id>/delete', methods=['POST'])
+@login_required
+@admin_required
+def delete_user(user_id):
+    user = User.query.get_or_404(user_id)
+
+    if user.id == current_user.id:
+        return jsonify({'success': False, 'error': 'You cannot delete your own account.'}), 400
+    if user.role == 'super_admin':
+        return jsonify({'success': False, 'error': 'Super admin accounts cannot be deleted.'}), 403
+    if current_user.role != 'super_admin' and user.role != 'citizen':
+        return jsonify({'success': False, 'error': 'You can only delete citizen accounts.'}), 403
+
+    # Anonymise incidents rather than cascade-delete them (preserve audit trail)
+    for inc in user.incidents:
+        inc.user_id = current_user.id  # re-assign to acting admin as placeholder
+    Notification.query.filter_by(user_id=user.id).delete()
+
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'User {user.username} deleted.'})
+
+
+@app.route('/admin/users/<int:user_id>/approve', methods=['POST'])
+@login_required
+@admin_required
+def approve_admin_user(user_id):
+    """Approve a pending admin — available to both super_admin and regular admins."""
+    user = User.query.get_or_404(user_id)
+    if user.role != 'admin' or user.account_status != 'pending_approval':
+        return jsonify({'success': False, 'error': 'User is not a pending admin.'})
+    user.account_status = 'active'
+    user.approved_by    = current_user.id
+    user.rejection_reason = None
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'{user.username} approved.'})
+
+
+@app.route('/admin/users/<int:user_id>/reject', methods=['POST'])
+@login_required
+@admin_required
+def reject_admin_user(user_id):
+    """Reject a pending admin — available to both super_admin and regular admins."""
+    user = User.query.get_or_404(user_id)
+    if user.role != 'admin':
+        return jsonify({'success': False, 'error': 'User is not an admin applicant.'})
+    data = request.get_json()
+    user.account_status   = 'rejected'
+    user.rejection_reason = data.get('reason', 'No reason provided.')
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'{user.username} rejected.'})
+
 
 @app.route('/admin/train', methods=['GET', 'POST'])
 @login_required
@@ -1122,6 +1242,336 @@ def export_analytics():
 @app.route('/offline')
 def offline():
     return render_template('offline.html')
+
+# ----------------------------------------------------------------------
+# Mobile API v1  (used by the Flutter app)
+# All routes return JSON. Session cookie auth via Flask-Login.
+# ----------------------------------------------------------------------
+
+def mobile_login_required(f):
+    """Like login_required but returns 401 JSON instead of redirecting."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+
+def mobile_admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+        if current_user.role not in ('admin', 'super_admin'):
+            return jsonify({'success': False, 'error': 'Admin access required'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+
+def user_to_dict(u):
+    return {
+        'id':             u.id,
+        'username':       u.username,
+        'email':          u.email,
+        'role':           u.role,
+        'district':       u.district,
+        'department':     u.department,
+        'account_status': u.account_status,
+        'display_role':   u.display_role,
+        'created_at':     u.created_at.isoformat(),
+    }
+
+
+def incident_to_dict(inc):
+    return {
+        'id':            inc.id,
+        'title':         inc.title,
+        'description':   inc.description,
+        'category':      inc.category,
+        'latitude':      inc.latitude,
+        'longitude':     inc.longitude,
+        'location_name': inc.location_name,
+        'district':      inc.district,
+        'department':    inc.department,
+        'status':        inc.status,
+        'is_emergency':  inc.is_emergency,
+        'image_url':     f"https://ems-project-0rck.onrender.com/static/{inc.image_path}" if inc.image_path else None,
+        'reporter':      inc.reporter.username if inc.reporter else 'Unknown',
+        'reporter_id':   inc.user_id,
+        'created_at':    inc.created_at.isoformat(),
+        'updated_at':    inc.updated_at.isoformat() if inc.updated_at else None,
+    }
+
+
+# ── Auth ──────────────────────────────────────────────────────────────
+
+@app.route('/api/v1/login', methods=['POST'])
+def api_login():
+    data = request.get_json() or {}
+    user = User.query.filter_by(email=data.get('email', '')).first()
+    if not user or not check_password_hash(user.password_hash, data.get('password', '')):
+        return jsonify({'success': False, 'error': 'Invalid email or password'}), 401
+    if not user.is_active:
+        msg = {
+            'pending_approval': 'Your account is pending approval by the administrator.',
+            'rejected':         f'Your account has been rejected. Reason: {user.rejection_reason or "Contact admin."}',
+        }.get(user.account_status, 'Account inactive.')
+        return jsonify({'success': False, 'error': msg}), 403
+    login_user(user, remember=True)
+    return jsonify({'success': True, 'user': user_to_dict(user)})
+
+
+@app.route('/api/v1/logout', methods=['POST'])
+@mobile_login_required
+def api_logout():
+    logout_user()
+    return jsonify({'success': True})
+
+
+@app.route('/api/v1/me', methods=['GET'])
+@mobile_login_required
+def api_me():
+    return jsonify({'success': True, 'user': user_to_dict(current_user)})
+
+
+@app.route('/api/v1/register', methods=['POST'])
+def api_register():
+    # Handles multipart (admin with ID doc) or JSON (citizen)
+    if request.content_type and 'multipart' in request.content_type:
+        data = request.form
+    else:
+        data = request.get_json() or {}
+
+    role       = data.get('role', 'citizen')
+    username   = data.get('username', '').strip()
+    email      = data.get('email', '').strip()
+    password   = data.get('password', '')
+    district   = data.get('district', '').strip() if role == 'admin' else None
+    department = data.get('department', '').strip() if role == 'admin' else None
+
+    if not username or not email or not password:
+        return jsonify({'success': False, 'error': 'Username, email and password are required'}), 400
+    if len(password) < 6:
+        return jsonify({'success': False, 'error': 'Password must be at least 6 characters'}), 400
+    if User.query.filter_by(email=email).first():
+        return jsonify({'success': False, 'error': 'Email already registered'}), 400
+    if User.query.filter_by(username=username).first():
+        return jsonify({'success': False, 'error': 'Username already taken'}), 400
+    if role == 'admin':
+        if not district:
+            return jsonify({'success': False, 'error': 'District is required for admin accounts'}), 400
+        if not department:
+            return jsonify({'success': False, 'error': 'Department is required for admin accounts'}), 400
+
+    id_doc_path = None
+    if role == 'admin' and 'id_document' in request.files:
+        id_file = request.files['id_document']
+        if id_file and id_file.filename:
+            id_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'id_documents')
+            os.makedirs(id_dir, exist_ok=True)
+            id_filename = secure_filename(f"id_{username}_{datetime.now().timestamp()}_{id_file.filename}")
+            id_file.save(os.path.join(id_dir, id_filename))
+            id_doc_path = f"images/uploads/id_documents/{id_filename}"
+
+    user = User(
+        username=username, email=email,
+        password_hash=generate_password_hash(password),
+        role=role,
+        district=district or None,
+        department=department or None,
+        account_status='pending_approval' if role == 'admin' else 'active',
+        id_document_path=id_doc_path,
+    )
+    db.session.add(user)
+    db.session.commit()
+
+    if role == 'admin':
+        for sa in User.query.filter_by(role='super_admin', account_status='active').all():
+            db.session.add(Notification(
+                user_id=sa.id, incident_id=1,
+                message=f"📋 New admin registration: {username} ({department}, {district})"
+            ))
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Application submitted. Awaiting admin approval.'})
+
+    return jsonify({'success': True, 'message': 'Account created. You can now log in.'})
+
+
+# ── Incidents ─────────────────────────────────────────────────────────
+
+@app.route('/api/v1/incidents', methods=['GET'])
+@mobile_login_required
+def api_incidents():
+    """Citizens get their own; admins get their scoped incidents."""
+    if current_user.role == 'citizen':
+        incidents = Incident.query.filter_by(user_id=current_user.id).order_by(Incident.created_at.desc()).all()
+    else:
+        q = Incident.query
+        if current_user.district and current_user.role != 'super_admin':
+            q = q.filter(db.or_(Incident.district == current_user.district, Incident.district == None))
+        if current_user.department and current_user.role != 'super_admin':
+            q = q.filter(db.or_(Incident.department == current_user.department, Incident.department == None))
+        incidents = q.order_by(Incident.created_at.desc()).all()
+    return jsonify({'success': True, 'incidents': [incident_to_dict(i) for i in incidents]})
+
+
+@app.route('/api/v1/incidents/<int:incident_id>', methods=['GET'])
+@mobile_login_required
+def api_incident_detail(incident_id):
+    inc = Incident.query.get_or_404(incident_id)
+    return jsonify({'success': True, 'incident': incident_to_dict(inc)})
+
+
+@app.route('/api/v1/incidents', methods=['POST'])
+@mobile_login_required
+def api_create_incident():
+    category    = request.form.get('category', '').strip()
+    description = request.form.get('description', '').strip()
+    lat         = request.form.get('latitude', '').strip()
+    lng         = request.form.get('longitude', '').strip()
+    loc_name    = request.form.get('location_name', '').strip()
+
+    if not category:
+        return jsonify({'success': False, 'error': 'Category is required'}), 400
+    if not description:
+        return jsonify({'success': False, 'error': 'Description is required'}), 400
+    if not lat or not lng:
+        return jsonify({'success': False, 'error': 'Location coordinates are required'}), 400
+    if 'image' not in request.files or not request.files['image'].filename:
+        return jsonify({'success': False, 'error': 'A photo is required'}), 400
+
+    file = request.files['image']
+    filename = secure_filename(f"{datetime.now().timestamp()}_{file.filename}")
+    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+    image_path = f"images/uploads/{filename}"
+
+    district     = reverse_geocode_district(float(lat), float(lng))
+    cat_label    = dict(INCIDENT_CATEGORIES).get(category, category.title())
+    department   = get_responsible_department(category)
+    is_emergency = classifier.is_emergency(category)
+
+    incident = Incident(
+        title=cat_label, description=description, category=category,
+        latitude=float(lat), longitude=float(lng),
+        location_name=loc_name, district=district,
+        department=department, image_path=image_path,
+        user_id=current_user.id, is_emergency=is_emergency,
+    )
+    db.session.add(incident)
+    db.session.commit()
+    create_incident_notifications(incident)
+
+    return jsonify({'success': True, 'incident': incident_to_dict(incident),
+                    'message': '🚨 Emergency reported!' if is_emergency else f'Reported to {department}.'})
+
+
+@app.route('/api/v1/incidents/<int:incident_id>/status', methods=['POST'])
+@mobile_admin_required
+def api_update_incident_status(incident_id):
+    inc  = Incident.query.get_or_404(incident_id)
+    data = request.get_json() or {}
+    if data.get('status') not in ('pending', 'verified', 'resolved', 'rejected'):
+        return jsonify({'success': False, 'error': 'Invalid status'}), 400
+    inc.status      = data['status']
+    inc.verified_by = current_user.id
+    db.session.commit()
+    return jsonify({'success': True, 'incident': incident_to_dict(inc)})
+
+
+# ── Notifications ─────────────────────────────────────────────────────
+
+@app.route('/api/v1/notifications', methods=['GET'])
+@mobile_login_required
+def api_notifications():
+    notifs = Notification.query.filter_by(user_id=current_user.id)\
+                               .order_by(Notification.created_at.desc()).limit(50).all()
+    data = [{
+        'id':          n.id,
+        'message':     n.message,
+        'is_read':     n.is_read,
+        'incident_id': n.incident_id,
+        'created_at':  n.created_at.isoformat(),
+    } for n in notifs]
+    unread = sum(1 for n in notifs if not n.is_read)
+    return jsonify({'success': True, 'notifications': data, 'unread_count': unread})
+
+
+@app.route('/api/v1/notifications/<int:notif_id>/read', methods=['POST'])
+@mobile_login_required
+def api_mark_notification_read(notif_id):
+    n = Notification.query.get_or_404(notif_id)
+    if n.user_id != current_user.id:
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+    n.is_read = True
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@app.route('/api/v1/notifications/read-all', methods=['POST'])
+@mobile_login_required
+def api_mark_all_read():
+    Notification.query.filter_by(user_id=current_user.id, is_read=False).update({'is_read': True})
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+# ── Dashboard stats ───────────────────────────────────────────────────
+
+@app.route('/api/v1/dashboard/stats', methods=['GET'])
+@mobile_login_required
+def api_dashboard_stats():
+    if current_user.role == 'citizen':
+        incidents = Incident.query.filter_by(user_id=current_user.id).all()
+        return jsonify({'success': True, 'stats': {
+            'total':    len(incidents),
+            'pending':  sum(1 for i in incidents if i.status == 'pending'),
+            'verified': sum(1 for i in incidents if i.status == 'verified'),
+            'resolved': sum(1 for i in incidents if i.status == 'resolved'),
+        }})
+    # Admin
+    q = Incident.query
+    if current_user.role != 'super_admin':
+        if current_user.district:
+            q = q.filter(db.or_(Incident.district == current_user.district, Incident.district == None))
+        if current_user.department:
+            q = q.filter(db.or_(Incident.department == current_user.department, Incident.department == None))
+    incidents = q.all()
+    unread = Notification.query.filter_by(user_id=current_user.id, is_read=False).count()
+    pending_admins_count = User.query.filter_by(role='admin', account_status='pending_approval').count()
+    return jsonify({'success': True, 'stats': {
+        'total':              len(incidents),
+        'pending':            sum(1 for i in incidents if i.status == 'pending'),
+        'verified':           sum(1 for i in incidents if i.status == 'verified'),
+        'resolved':           sum(1 for i in incidents if i.status == 'resolved'),
+        'emergencies':        sum(1 for i in incidents if i.is_emergency and i.status != 'resolved'),
+        'unread_notifications': unread,
+        'pending_admins':     pending_admins_count,
+    }})
+
+
+# ── Map data (public) ─────────────────────────────────────────────────
+
+@app.route('/api/v1/map', methods=['GET'])
+def api_map_data():
+    incidents = Incident.query.filter(
+        Incident.latitude != None, Incident.longitude != None
+    ).order_by(Incident.created_at.desc()).all()
+    return jsonify({'success': True, 'incidents': [incident_to_dict(i) for i in incidents]})
+
+
+# ── Categories & districts (reference data) ───────────────────────────
+
+@app.route('/api/v1/reference', methods=['GET'])
+def api_reference():
+    return jsonify({
+        'success':    True,
+        'categories': [{'value': v, 'label': l} for v, l in INCIDENT_CATEGORIES],
+        'districts':  MALAWI_DISTRICTS,
+        'departments': DEPARTMENTS,
+        'category_department_map': CATEGORY_DEPARTMENT_MAP,
+    })
+
 
 # ----------------------------------------------------------------------
 # Error Handlers
